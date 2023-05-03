@@ -1,12 +1,49 @@
 
 library(dplyr)
+library(tidyr)
 library(forcats)
+library(gtsummary)
 
 #pdf("test_pdf.pdf", width = 9, height = 6.5)
 
 dat2 <- data.table::fread("/rawdata/UKBB/ukb668829.tab", sep = "\t")
 
-metab <- read.table("Nightingale_biomarker_groups.txt", fill = T, sep = "\t", header=T)
+dat <- ukb_df("ukb668829", path = "/rawdata/UKBB")
+
+metabs <- ukb_df("ukb672390", path = "/rawdata/UKBB/Metabolomics_Apr2023")
+
+ukb_key_metab <- ukb_df_field("ukb672390", path = "/rawdata/UKBB/Metabolomics_Apr2023")
+
+
+dat <- ukb_df("ukb668829", path = "/rawdata/UKBB")
+
+#grab diagnostic incidence
+
+#codes from jama paper eTable 7 Said 2018 Associations of Combined Genetic and LIfestyle risks with ...
+
+# coronary artery disease 
+# icd-9 410, 412, 414
+# icd-10 I21-25, Z951, Z955 #field 41270
+
+#OPCS-4 K40-K46, K49, K50, K75 #field id 41272
+# self-reported 6150(1), 3894, 20004(1070, 1095, 1523)
+#mortality field 40000 date of death
+# mortality field 40001 primary cause of death
+
+# Stroke codes
+#icd-9 3361, 36231, 36232, 430, 431, 4329, 43301, 43311, 43321, 43331, 43381, 43391, 434, 436
+
+
+#join demographi and metab data
+fulldat <- ukb_df_full_join(dat, metabs)
+
+# visualize distibution of certain demographic variables in missing vs non missing data
+ukb_context(fulldat,
+            nonmiss.var = total_cholesterol_f23400_0_0)
+
+# visualize ICD freq by sex in full vs metabolite dataset
+
+metab <- read.table("~/Nightingale_biomarker_groups.txt", fill = T, sep = "\t", header=T)
 
 datselect <- dat2 %>%
   select(f.eid,
@@ -38,7 +75,22 @@ datselect <- dat2 %>%
                                  occasionally = "2",
                                  no = "0"))
 
-sink("full_summary.txt")
+
+testmerge <- right_join(datselect %>% select(eid = f.eid,female, current_smoker2, age_at_assessment, bmi_assessment, hba1c), metabs, by = "eid")
+
+testmerge %>%
+  select(age_at_assessment, female, current_smoker2, age_at_assessment:hba1c)%>%
+  tbl_summary(by = female) %>%
+  add_overall()
+
+testmerge %>%
+  drop_na(total_cholesterol_f23400_0_0)%>%
+  select(age_at_assessment, female, current_smoker2, age_at_assessment:hba1c) %>%
+  tbl_summary(by = female) %>%
+  add_overall()
+
+
+#sink("full_summary.txt")
 print("Female characteristics")
 datselect %>%
   select(age_at_assessment, female, current_smoker2, weight:hba1c) %>%
