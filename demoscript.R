@@ -4,6 +4,7 @@ library(dplyr)
 library(tidyr)
 library(forcats)
 library(gtsummary)
+library(ukbtools)
 
 #pdf("test_pdf.pdf", width = 9, height = 6.5)
 
