@@ -185,10 +185,10 @@ final3 %>%
 # filter for diagnosis that occurred after date of first asse
 
 
-dat <- dat %>%
-  select(eid, all_of(char_key$col.name), all_of(icd_key$col.name))
-
-dat_sub_metab <- left_join(dat, metabs)
+# dat <- dat %>%
+#   select(eid, all_of(char_key$col.name), all_of(icd_key$col.name))
+# 
+# dat_sub_metab <- left_join(dat, metabs)
 
 #save(dat_sub_metab, file = "/rawdata/UKBB/Metabolomics_Apr2023/dat_subset_metab.Rdata")
 load("/rawdata/UKBB/Metabolomics_Apr2023/dat_subset_metab.Rdata")

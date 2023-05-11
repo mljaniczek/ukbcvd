@@ -1,0 +1,139 @@
+---
+title: "UKB CHD-Sex-Metabolite Project Update"
+author: "Margaret Janiczek"
+date: "2023-05-11"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+library(tidyverse)
+library(gtsummary)
+library(gt)
+theme_gtsummary_compact()
+```
+
+# Summary
+
+We gained access to download the UKBiobank NMR Metabolomics data on April 27, in addition to having access to the full cohort of UKBiobank data. Our first objective was to summarize some baseline characteristics in both the full UKB sample (N = 502,411) as well as the subset with available metabolomics (N = 121,716). We also summarized the occurrences of various cardiac-related outcomes after initial assessment in both the full sample and subset with metabolites. We stratified the summaries by sex (field 31) as well as included overall summaries. 
+ 
+# Methods
+
+I summarized number and percent of total for categorical variables such as smoking status, hysterectomy, menopause, and hormone replacement therapy (HRT) status. I calculated median and interquartile range (IQR) of several continuous measurements taken at first assessment visit (height, weight, body mass index (BMI), age at first assessment, body and trunk fat percentage, whole body impedance (estimated muscle mass), HbA1c, several blood pressure (BP) and pulse measurements (both automated and manual), and various bone mineral density (BMD) measures). Field code is included in the table in case definitions are needed for clarity. 
+
+By matching ICD10 codes (as described [in the Said 2018 paper](https://cdn.jamanetwork.com/ama/content_public/journal/cardiology/937443/hoi180027supp1_prod.pdf?Expires=1686745913&Signature=qPXWa5pEs4oB6fLhnDrnC4N5dW~lV6w4pnEClxaZHWSZ~EEj2-Am03JSiA8Z2G4v6nadjXA284JJ7I0Lr8eP4g12I4zKUpjHnPgnscRolj59cpkdqlyH4UJzQ5RD6elK3GKLisLGTIBY9y3BKrlwrQ85q2H1XIAXrGQNMOQKKfbrDTWtUGoLX89p-qQlEnjR2m6Ngkt5uekZ31YshJNPILdOuQnsRFn~Gc3dxfnrvemXuRp2fFMAOOVPnHDtCgvqg~oHWdIBJm8xxYZBZk9AK-Qjm~9Pbm3v639pBbnsmBWibI0DGFCDfLcdyu~QzzjY511PZN7bm8YGC6-JjDNgiA__&Key-Pair-Id=APKAIE5G5CRDK6RD3PGA)) in field 41270, I identified incident diagnosis of Hypertension, Type 2 Diabetes, Atrial Fibrilation, Stroke, and Coronary Artery Disease (CAD). I used the corresponding date of diagnoses (field 41280) and compared it to the date of initial assessment (field 53) to identify diagnoses that occurred after first assessment. Some subjects had more than one condition (e.g. both hypertension and diabetes), all distinct diagnoses are included. In cases where a subject had multiple dates for the same diagnosis (e.g. multiple dates recording hypertension), I used the first diagnosis date to compare to initial assessment at UKB assessment center.
+
+I made an indicator variable "Has Metabolites" based on if subjects had any values entered in fields 23400-23948 to get the subset of 121,716 subjects with NMR metabolite measurements.  
+
+# Next steps
+
+The incident table should be thought of as a "lower bound" since it only includes diagnoses from the field of ICD10 codes, which were captured during in-patient hospital visits. We also need to look at the mortality, outpatient surgery, and self-reported diagnoses fields to capture a more precise estimate for the incidence of outcomes.
+
+Next we will also need to do processing of the metabolite data itself before summarizing it and moving forward with analysis. 
+
+# Questions
+
+- What additional demographic/baseline assessment variables should we consider?
+
+- What definitions of demographic/baseline assessment variables should we use (e.g. in cases where there are self-reported, automatic measurements, and manual entry, we should determine which measurement(s) to use)? 
+
+- Are there additional outcomes we should examine? 
+
+# Tables
+
+## ICD10 Codes
+
+The following ICD10 codes were used to identify outcomes of interest. 
+
+```{r}
+disease_def <- data.frame(
+  disease = c("Coronary Artery Disease", "Atrial Fibrillation", "Stroke", "Hypertension", "Diabetes Mellitus Type 2"),
+  ICD10 = c("I21-25, Z951, Z955", "I48", "I60, I61, I629, I63, I64, I678, I690, I693, G951, H341, H342, S066", "I10-I13, I15, O10", "E10-E14")
+)
+
+gt(disease_def)
+```
+
+## Summary of incidence of outcomes
+
+The below table describes the number and percent of incident diagnoses (defined as ICD10 diagnosis that occurred after date of first assessment). "Samples with Metabolites" is defined as the subset of subjects with any entry in the NMR metabolite fields (23400-23948). 
+
+```{r}
+load("dx_prevalence_table_icd102.Rdata")
+load("testtab2.Rdata")
+
+
+tbl_merge_icd102 <- as_gt(tbl_merge_icd10)
+
+tbl_merge_icd10$table_body[tbl_merge_icd10$table_body == "hypertension"] <- "Hypertension"
+
+tbl_merge_icd10$table_body[tbl_merge_icd10$table_body == "diabetes_t2"] <- "Type 2 Diabetes"
+
+tbl_merge_icd10$table_body[tbl_merge_icd10$table_body == "afib"] <- "Atrial Fibrillation"
+
+tbl_merge_icd10$table_body[tbl_merge_icd10$table_body == "stroke"] <- "Stroke"
+
+tbl_merge_icd10$table_body[tbl_merge_icd10$table_body == "cad"] <- "CAD"
+
+
+tbl_merge_icd10
+```
+
+## Summary of Baseline characteristics
+
+The below table describes the distribution of various baseline characteristics and measurements, defined as measured at the first date of assessment. 
+
+Note that certain characteristics only have entry for subjects with Sex = Female (e.g. hysterectomy, menopause, and HRT status). 
+
+```{r}
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="current_smoker"] <- "Current Smoker"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="ever_had_hysterectomy"] <- "Hysterectomy (ever)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="ever_used_hrt"] <- "HRT Use (ever)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="had_menopause"] <- "Had menopause"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="pulse_rate_automated_reading_f102_0_0"] <- "Pulse (automated) (102)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="body_mass_index_bmi_f21001_0_0"] <- "BMI (21001)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="age_when_attended_assessment_centre_f21003_0_0"] <- "Baseline age (21003)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="pulse_wave_arterial_stiffness_index_f21021_0_0"] <- "Pulse wave arterial stiffness (21021)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="body_fat_percentage_f23099_0_0"] <- "Bodyfat % (23099)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="impedance_of_whole_body_f23106_0_0"] <- "Whole body impedance (23106)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="trunk_fat_percentage_f23127_0_0"] <- "Trunk fat % (23127)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="age_at_hysterectomy_f2824_0_0"] <- "Age at Hysterectomy (2824)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="peak_expiratory_flow_pef_f3064_0_0"] <- "PEF (3064)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="glycated_haemoglobin_hba1c_f30750_0_0"] <- "HbA1c (30750)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="age_started_hormonereplacement_therapy_hrt_f3536_0_0"] <- "Age started HRT (3536)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="age_last_used_hormonereplacement_therapy_hrt_f3546_0_0"] <- "Age last used HRT (3546)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="diastolic_blood_pressure_automated_reading_f4079_0_0"] <- "Diastolic BP (auto) (4079)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="systolic_blood_pressure_automated_reading_f4080_0_0"] <- "Systolic BP (auto) (4080)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="heel_bone_mineral_density_bmd_tscore_automated_right_f4125_0_0"] <- "Heel BMD (auto, Tscore) (4125)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="heel_bone_mineral_density_bmd_tscore_manual_entry_left_f4138_0_0"] <- "Heel BMD (manual, Tscore) (4138)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="waist_circumference_f48_0_0"] <- "Waist circumference (cm) (48)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="hip_circumference_f49_0_0"] <- "Hip circumference (cm) (49)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="standing_height_f50_0_0"] <- "Height (cm) (50)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="heel_bone_ultrasound_tscore_manual_entry_f77_0_0"] <- "Heel bone ultrasound (manual, Tscore) (77)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="heel_bone_mineral_density_bmd_tscore_automated_f78_0_0"] <- "Heel BMD (automated, Tscore) (78)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="systolic_blood_pressure_manual_reading_f93_0_0"] <- "Systolic BP (manual) (93)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="diastolic_blood_pressure_manual_reading_f94_0_0"] <- "Diastolic BP (manual) (94)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="pulse_rate_during_bloodpressure_measurement_f95_0_0"] <- "Pulse during BP (manual) (95)"
+
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="prefer_not_answer"] <- "Prefer not to answer"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="not_sure"] <- "Not Sure"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="not_sure_hysterectomy"] <- "Not Sure (Hysterectomy)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="not_sure_other"] <- "Not Sure (Other)"
+tblmerg_gt$`_data`[tblmerg_gt$`_data`=="NA"] <- "-"
+
+
+
+tblmerg_gt2 <- tblmerg_gt
+
+tblmerg_gt2$`_data` <- tblmerg_gt2$`_data` %>%
+  filter(var_label != "had_menopause_f2724_0_0") %>%
+  filter(var_label != "ever_used_hormonereplacement_therapy_hrt_f2814_0_0")
+
+tblmerg_gt
+```
+
+
+
