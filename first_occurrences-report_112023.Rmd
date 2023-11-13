@@ -1,0 +1,288 @@
+---
+title: 'UKB CVD: Phase 1 & Phase 2 First Occurrences Analysis, Baseline Characteristics
+  and Initial Metabolite Exploration'
+output:
+  html_document:
+    df_print: paged
+    toc: TRUE
+    toc_float: TRUE
+    number_sections: TRUE
+date: "2023-08-08"
+classoption: landscape
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(dplyr)
+library(tidyr)
+library(gtsummary)
+library(stringr)
+
+source("labellist.R")
+theme_gtsummary_compact()
+```
+
+Author: M Janiczek
+Prepared for: R Balasubramanian & K Rexrode 
+
+# Summary
+
+We gained access to download the UKBiobank Phase 1 NMR Metabolomics data on April 27, in addition to having access to the full cohort of UKBiobank data. Phase 2 NMR Metabolomics data was released in July 2020 and we gained access to download on July 19. In this report I summarize the baseline characteristics in the full UKB sample (N = 502,411) as well as the subjects with available metabolomics measurements from their first UKB assessment centre visit from Phase I (N = 118,004) and Phase 2 (N = 156,375). 
+
+I also downloaded the aggregate "First Occurrences" data to determine if we should use that field for our outcome estimate. 
+
+# Methods
+
+I summarized the number and percent of total for categorical variables such as smoking status, hysterectomy, menopause, and hormone replacement therapy (HRT) status. I calculated mean and interquartile range (IQR) of several continuous measurements taken at first assessment visit. Field code is included in the table in case definitions are needed for clarity. 
+
+By matching ICD10 codes (as described in the Said 2018 paper) in field 41270 (Hospital Inpatient records), as well as First Occurrences data (category 1712), I identified incident diagnosis of Hypertension, Type 2 Diabetes, Atrial Fibrilation, Stroke, and Coronary Artery Disease (CAD). I used the corresponding date of diagnoses and compared it to date of initial assessment (field 53) to identify diagnoses that occurred after first assessment. Some subjects had more than one condition, and all distnict diagnoses are included. In cases where a subject had multiple dates for the same diagnosis I used the first diagnosis date to compare to initial assessment at UKB assessment center. 
+
+I made a categorical variable "Metabolite Status" based on if subjects were included in the Phase I or Phase II metabolite release. 
+
+# First occurrences data
+
+First occurrences data (category 1712) were downloaded using Category 2409 "Circulatory system disorders" as well as category 2404 "Endocrine, nutritional and metabolic diseases" (for diabetes). 
+The data fields included date the code was first recorded across primary care data, hospital inpatient data, death register records, or self-reported medical conditions reported at baseline or subsequent UK Biobank assessment centre visit, as well as the source of the code. 
+
+After downloading the data, I searched for fields containing the ICD10 codes previously discussed (from the Said 2018 paper), and created new variables for the 5 conditions, indicating "1" for patients who had that code AFTER the date of first UKB assessment, and 0 otherwise. 
+
+The following ICD10 codes were used to identify outcomes of interest (based on Appendix of Said 2018 paper):
+
+```{r}
+disease_def <- data.frame(
+  disease = c("Coronary Artery Disease", 
+              "Atrial Fibrillation",
+              "Stroke",
+              "Hypertension",
+              "Diabetes Mellitus Type 2"),
+  `Available-in-Hospital_Records`= c("I21-25, Z951, Z955", "I48", "I60, I61, I629, I63, I64, I678, I690, I693, G951, H341, H342, S066", "I10-I13, I15, O10", "E10-E14"),
+  `Available-in-First_Occurrences` = c("I21-I25", "I48", "I60, I61, I63, I64", "I10-I13, I15", "E10-E14" )
+)
+
+gt::gt(disease_def)
+```
+
+**Questions for Kathy**:
+
+1. Should we use Hospital records, First occurrences, or Both?
+
+2. Which ICD10 codes should we use? 
+
+3. If we use First Occurrences, should we use all sources or a subset?
+
+
+# Results
+
+Below we can see the distribution of these codes from the various sources, which are largely still from hospital inpatient records:
+
+```{r}
+load("/rawdata/UKBB/Metabolomics_jul2023/first_occ_all_long.Rdata")
+
+load("/rawdata/UKBB/Metabolomics_jul2023/dat_subset_metab.Rdata")
+library(ggplot2)
+final_fo %>%
+  filter(has_disease_fo == 1) %>%
+  ggplot(aes(disease_fo)) +
+  geom_bar(aes(fill = source_of_report)) +
+  theme_bw() +
+  ylab("N incident cases") +
+  xlab("Disease") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+#length(unique(final_fo$eid))
+
+
+
+
+```
+
+
+First, we can examine the distribution of incidence of our conditions of interest in the overall cohort compared to those in the PHase 1 cohort, split by Sex. I included our original incidence estimates using only hospital inpatient data as well as the incidence calculated using the first occurrences data (denoted with "FO" below). We can see that while some incident cases were added, Hypertension had a much lower capture rate in the "First Occurrences" data. 
+
+```{r}
+tab_disease <- dat_sub_metab2 %>%
+  select(sex_f31_0_0, metabolite_status, 
+         #all_of(names(unlist(outcomedatlist))), all_of(names(unlist(outcomedatlist_fo))),
+         cad, cad_fo, afib, afib_fo, stroke, stroke_fo, hypertension, hypertension_fo, diabetes_t2, diabetes_t2_fo
+         )
+
+metab_tab_phase1_sex <- tab_disease %>%
+  filter(metabolite_status == "Phase 1") %>%
+  select(-metabolite_status) %>%
+  tbl_summary(by = sex_f31_0_0, missing = "no") %>%
+  bold_labels() %>%
+  #add_n() %>%
+  add_overall()
+
+metab_tab_phase2_sex <- tab_disease %>%
+  filter(metabolite_status == "Phase 2") %>%
+  select(-metabolite_status) %>%
+  tbl_summary(by = sex_f31_0_0, missing = "no") %>%
+  bold_labels() %>%
+  add_overall()
+
+all_tab_phase1_outcome <- tab_disease %>%
+  select(-metabolite_status) %>%
+  tbl_summary(by = sex_f31_0_0, missing = "no") %>%
+  bold_labels() %>%
+  #add_n() %>%
+  add_overall()
+
+tbl_merge_outcome <- tbl_merge(tbls = list(all_tab_phase1_outcome, metab_tab_phase1_sex, metab_tab_phase2_sex),
+                               tab_spanner = c("**All Samples**", "**Phase 1 Samples**", "**Phase 2 Samples**"))
+
+tbl_merge_outcome
+
+```
+
+
+
+# Summary of baseline characteristics
+
+```{r}
+load(here::here("testtab2_080123.Rdata"))
+```
+
+The below table describes the distribution of various baseline characteristics and measurements, defined as measured at the first date of assessment. 
+
+```{r}
+tbl_merge1
+```
+
+# Initial Metabolite exploration
+
+All 249 metabolites had some sort of measurement (>0) 99.9% of the Phase I samples. I used the updated Phase I data released with Phase II.
+
+## M1 (Minimal Model): Age Stratified + Menopause
+
+Outcome: Metabolite level
+Exposure: Sex
+
+Age split into following strata: <50, 50-59, 60-69, 70-85. 
+
+Menopausal status: only use in the <50 and 50-59 strata.
+
+* Menopausal status: "Not sure" but over 55 goes into "Menopausal". Under 55 go into category "Undetermined"
+
+Within each age strata, fit the M1 for all metabolites and get p-values for exposure. Do q-value adjustment, use q <0.05. 
+
+```{r}
+
+# get the data we want to analyze
+
+dat_sub_metab2 <- dat_sub_metab2 %>%
+  #filter(metabolite_status == "Phase 1") %>%
+  # make age category
+  mutate(age_cat = ifelse(
+    age_when_attended_assessment_centre_f21003_0_0 <50, "<50",
+    ifelse(age_when_attended_assessment_centre_f21003_0_0 >=50 & 
+             age_when_attended_assessment_centre_f21003_0_0 <60, "50-59",
+      ifelse(age_when_attended_assessment_centre_f21003_0_0 >=60 & 
+             age_when_attended_assessment_centre_f21003_0_0 <70, "60-69",
+             ifelse(age_when_attended_assessment_centre_f21003_0_0 >=70, "70-85", NA)))),
+    menopause_cat = ifelse(
+      age_when_attended_assessment_centre_f21003_0_0 <55 & 
+        had_menopause_f2724_0_0 %in% c("Prefer not to answer", "Not sure - other reason", "Not sure - had a hysterectomy"), "Undetermined",
+      ifelse(age_when_attended_assessment_centre_f21003_0_0 >=55 & 
+        had_menopause_f2724_0_0 %in% c("Prefer not to answer", "Not sure - other reason", "Not sure - had a hysterectomy"), "Yes",
+      ifelse(sex_f31_0_0 == "Male", "No",
+      had_menopause_f2724_0_0))))
+
+dat_phase1 <- dat_sub_metab2 %>%
+  filter(metabolite_status == "Phase 1") %>%
+  # doing center scaling so we can compare estimates?
+  mutate(across(
+    all_of(metab_key2$col.name),scale)
+  )
+
+# I don't think we need to do this log transformation??
+met1 <- dat_phase1 %>%
+  select(all_of(metab_key2$col.name))# %>%
+ # transmute_all(~scale(log(. +.01), center = FALSE))
+
+
+
+library(purrr)
+
+# should I go to long format??
+
+met_long <- dat_phase1 %>%
+  dplyr::select(eid, age_cat, menopause_cat, sex = sex_f31_0_0, all_of(metab_key2$col.name)) %>%
+  pivot_longer(-c(eid, age_cat, menopause_cat, sex), names_to = "metabolite", values_to = "value")
+
+library(purrr)
+library(broom)
+
+long_test_1 <- met_long %>%
+  filter(age_cat %in% c("<50", "50-59")) %>%
+  nest(.by = c(age_cat, metabolite)) %>%
+  mutate(model = map(data, ~lm(value ~ sex + menopause_cat, data = .x))) %>%
+        mutate(tidied = map(model, tidy)) 
+
+res_lt50_to_59 <- long_test_1 %>% select(metabolite, age_cat, tidied) %>%
+  unnest(tidied) %>%
+  filter(term == "sex.L")
+
+long_test_2 <- met_long %>%
+  filter(age_cat %in% c("60-69", "70-85")) %>%
+  nest(.by = c(age_cat, metabolite)) %>%
+  mutate(model = map(data, ~lm(value ~ sex, data = .x))) %>%
+        mutate(tidied = map(model, tidy)) 
+
+res_60_to_85 <- long_test_2 %>% select(metabolite, age_cat, tidied) %>%
+  unnest(tidied) %>%
+  filter(term == "sex.L")
+
+all_strat_M1 <- bind_rows(res_lt50_to_59, res_60_to_85) %>%
+  mutate(fdr = p.adjust(p.value, "fdr"))
+
+
+subset_M1 <- all_strat_M1 %>%
+  filter(fdr < 0.05 & abs(estimate)>1) # what would be a "meaningful" estimate?
+
+length(unique(subset_M1$metabolite))
+
+ggplot(all_strat_M1, aes(x = estimate, y = -log10(fdr+.05))) +
+  geom_point()
+
+gt::gt(subset_M1)
+#write.csv(test28, "lm_metabolites_051523.csv")
+```
+
+```{r}
+# now try to visualize densities for some of those top metabolites
+
+dat_select <- met_long %>%
+  filter(metabolite %in% subset_M1$metabolite) 
+```
+
+
+
+
+## M2 Adjusted model
+
+Adjust for: 
+
+* Smoking status 
+* Race (group into white (including british and irish), black, asian, southeast asian, mixed/other)
+* BMI
+
+Within each age strata, fit the M2 for all metabolites and get p-values for exposure. Do q-value adjustment, use q <0.05. 
+
+# Validation 
+
+In Phase II data, do same agnostic analysis. How many metabolites are concordant? 
+
+* Within each strata, choose metabolites that had q-value <0.05 in Phase I. Look at those metabolites in the Phase II data- run model. 
+
+* There will be different sets of metabolites for each strata. 
+
+* There will be two sets of validated findings (from M1 and M2). 
+
+* Look at magnitude of difference and direction (visualization).
+
+
+
+# References
+
+Said MA, Verweij N, van der Harst P. Associations of Combined Genetic and Lifestyle Risks with Incident Cardiovascular Disease and Diabetes in the UK Biobank Study. JAMA Cardiol. 2018;3(8):693-702.
