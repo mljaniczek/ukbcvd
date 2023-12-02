@@ -7,7 +7,7 @@ output:
     toc: TRUE
     toc_float: TRUE
     number_sections: TRUE
-date: "2023-08-08"
+date: "2023-11-22"
 classoption: landscape
 ---
 
@@ -17,6 +17,9 @@ library(dplyr)
 library(tidyr)
 library(gtsummary)
 library(stringr)
+library(purrr)
+library(broom)
+library(gt)
 
 source("labellist.R")
 theme_gtsummary_compact()
@@ -24,6 +27,10 @@ theme_gtsummary_compact()
 
 Author: M Janiczek
 Prepared for: R Balasubramanian & K Rexrode 
+
+## Updates
+
+Since last report, changed definition of Type 2 diabetes to only include ICD10 Code E11. Moved other diabetes codes into a new variable "Diabetes Other". Also added Model 1 results and forest plots.
 
 # Summary
 
@@ -62,13 +69,8 @@ disease_def <- data.frame(
 gt::gt(disease_def)
 ```
 
-**Questions for Kathy**:
 
-1. Should we use Hospital records, First occurrences, or Both?
-
-2. Which ICD10 codes should we use? 
-
-3. If we use First Occurrences, should we use all sources or a subset?
+We determined we would go with only the first occurrences data for now as it appears to be cleaner. 
 
 
 # Results
@@ -78,7 +80,10 @@ Below we can see the distribution of these codes from the various sources, which
 ```{r}
 load("/rawdata/UKBB/Metabolomics_jul2023/first_occ_all_long.Rdata")
 
-load("/rawdata/UKBB/Metabolomics_jul2023/dat_subset_metab.Rdata")
+load("/rawdata/UKBB/Metabolomics_jul2023/dat_subset_metab_112223.Rdata")
+
+# load prepared ukb keys
+ukb_key_metab <- ukbtools::ukb_df_field("ukb673788", path = "/rawdata/UKBB/Metabolomics_jul2023")
 library(ggplot2)
 final_fo %>%
   filter(has_disease_fo == 1) %>%
@@ -97,13 +102,20 @@ final_fo %>%
 ```
 
 
-First, we can examine the distribution of incidence of our conditions of interest in the overall cohort compared to those in the PHase 1 cohort, split by Sex. I included our original incidence estimates using only hospital inpatient data as well as the incidence calculated using the first occurrences data (denoted with "FO" below). We can see that while some incident cases were added, Hypertension had a much lower capture rate in the "First Occurrences" data. 
+First, we can examine the distribution of incidence of our conditions of interest in the overall cohort compared to those in the PHase 1 cohort, split by Sex. The incidence is calculated using the first occurrences data (denoted with "FO" below).
 
 ```{r}
+# tab_disease <- dat_sub_metab2 %>%
+#   select(sex_f31_0_0, metabolite_status, 
+#          #all_of(names(unlist(outcomedatlist))), all_of(names(unlist(outcomedatlist_fo))),
+#          cad, cad_fo, afib, afib_fo, stroke, stroke_fo, hypertension, hypertension_fo, diabetes_t2, diabetes_t2_fo
+#          )
+
+# now reducing it to just be first occurences 
 tab_disease <- dat_sub_metab2 %>%
   select(sex_f31_0_0, metabolite_status, 
          #all_of(names(unlist(outcomedatlist))), all_of(names(unlist(outcomedatlist_fo))),
-         cad, cad_fo, afib, afib_fo, stroke, stroke_fo, hypertension, hypertension_fo, diabetes_t2, diabetes_t2_fo
+         cad_fo, afib_fo,stroke_fo, hypertension_fo, diabetes_t2_fo
          )
 
 metab_tab_phase1_sex <- tab_disease %>%
@@ -113,6 +125,7 @@ metab_tab_phase1_sex <- tab_disease %>%
   bold_labels() %>%
   #add_n() %>%
   add_overall()
+
 
 metab_tab_phase2_sex <- tab_disease %>%
   filter(metabolite_status == "Phase 2") %>%
@@ -149,6 +162,43 @@ The below table describes the distribution of various baseline characteristics a
 tbl_merge1
 ```
 
+For the models, we stratify by age in the following strata <50, 50-59, 60-69, 70-85. See below for distribution of participants by phase, sex, and age category.
+
+```{r}
+# table for age strata and sex 
+
+tabdat_age <- dat_sub_metab2 %>%
+  select(age_cat, sex_f31_0_0, metabolite_status)
+
+age_tab_phase1_sex <- tabdat_age %>%
+  filter(metabolite_status == "Phase 1") %>%
+  select(-metabolite_status) %>%
+  tbl_summary(by = sex_f31_0_0, missing = "no") %>%
+  bold_labels() %>%
+  #add_n() %>%
+  add_overall()
+
+
+age_tab_phase2_sex <- tabdat_age %>%
+  filter(metabolite_status == "Phase 2") %>%
+  select(-metabolite_status) %>%
+  tbl_summary(by = sex_f31_0_0, missing = "no") %>%
+  bold_labels() %>%
+  add_overall()
+
+all_tab_age <- tabdat_age %>%
+  select(-metabolite_status) %>%
+  tbl_summary(by = sex_f31_0_0, missing = "no") %>%
+  bold_labels() %>%
+  #add_n() %>%
+  add_overall()
+
+tbl_merge_age <- tbl_merge(tbls = list(all_tab_age, age_tab_phase1_sex, age_tab_phase2_sex),
+                               tab_spanner = c("**All Samples**", "**Phase 1 Samples**", "**Phase 2 Samples**"))
+
+tbl_merge_age
+```
+
 # Initial Metabolite exploration
 
 All 249 metabolites had some sort of measurement (>0) 99.9% of the Phase I samples. I used the updated Phase I data released with Phase II.
@@ -158,13 +208,14 @@ All 249 metabolites had some sort of measurement (>0) 99.9% of the Phase I sampl
 Outcome: Metabolite level
 Exposure: Sex
 
-Age split into following strata: <50, 50-59, 60-69, 70-85. 
+Age split into following strata: <50, 50-59, 60-69, 70-85. Linear regression model of for each metabolite fit within each strata. Centered and scaled metabolite value so that we could compare coefficients easier. 
 
-Menopausal status: only use in the <50 and 50-59 strata.
+$CenteredScaled Metabolite Value \sim Sex + Menopause*$
 
-* Menopausal status: "Not sure" but over 55 goes into "Menopausal". Under 55 go into category "Undetermined"
 
-Within each age strata, fit the M1 for all metabolites and get p-values for exposure. Do q-value adjustment, use q <0.05. 
+* Menopausal status: "Not sure" but over 55 goes into "Menopausal". Under 55 go into category "Undetermined". Variable only used in the <50 and 50-59 strata.
+
+Within each age strata, fit the M1 for all metabolites and get p-values for exposure. Do FDR adjustment for multiple testing; use q <0.05. 
 
 ```{r}
 
@@ -188,6 +239,12 @@ dat_sub_metab2 <- dat_sub_metab2 %>%
       ifelse(sex_f31_0_0 == "Male", "No",
       had_menopause_f2724_0_0))))
 
+metab_key2 <- ukb_key_metab %>%
+  filter(!str_detect(col.name, "qc_flag"))%>%
+  filter(field.showcase %in% 23400:24000) %>%
+  filter(col.type == "Continuous") %>%
+  filter(str_detect(field.tab, ".0.0"))
+
 dat_phase1 <- dat_sub_metab2 %>%
   filter(metabolite_status == "Phase 1") %>%
   # doing center scaling so we can compare estimates?
@@ -200,24 +257,18 @@ met1 <- dat_phase1 %>%
   select(all_of(metab_key2$col.name))# %>%
  # transmute_all(~scale(log(. +.01), center = FALSE))
 
-
-
-library(purrr)
-
 # should I go to long format??
 
 met_long <- dat_phase1 %>%
   dplyr::select(eid, age_cat, menopause_cat, sex = sex_f31_0_0, all_of(metab_key2$col.name)) %>%
   pivot_longer(-c(eid, age_cat, menopause_cat, sex), names_to = "metabolite", values_to = "value")
 
-library(purrr)
-library(broom)
 
 long_test_1 <- met_long %>%
   filter(age_cat %in% c("<50", "50-59")) %>%
   nest(.by = c(age_cat, metabolite)) %>%
   mutate(model = map(data, ~lm(value ~ sex + menopause_cat, data = .x))) %>%
-        mutate(tidied = map(model, tidy)) 
+        mutate(tidied = map(model, ~tidy(.x, conf.int = T))) 
 
 res_lt50_to_59 <- long_test_1 %>% select(metabolite, age_cat, tidied) %>%
   unnest(tidied) %>%
@@ -227,7 +278,7 @@ long_test_2 <- met_long %>%
   filter(age_cat %in% c("60-69", "70-85")) %>%
   nest(.by = c(age_cat, metabolite)) %>%
   mutate(model = map(data, ~lm(value ~ sex, data = .x))) %>%
-        mutate(tidied = map(model, tidy)) 
+        mutate(tidied = map(model, ~tidy(.x, conf.int = T))) 
 
 res_60_to_85 <- long_test_2 %>% select(metabolite, age_cat, tidied) %>%
   unnest(tidied) %>%
@@ -238,23 +289,279 @@ all_strat_M1 <- bind_rows(res_lt50_to_59, res_60_to_85) %>%
 
 
 subset_M1 <- all_strat_M1 %>%
-  filter(fdr < 0.05 & abs(estimate)>1) # what would be a "meaningful" estimate?
+  filter(fdr < 0.05 & abs(estimate)>.5) %>%
+  mutate(phase = "Phase I") # what would be a "meaningful" estimate?
 
-length(unique(subset_M1$metabolite))
+#length(unique(subset_M1$metabolite))
+#unique(subset_M1$age_cat)
 
 ggplot(all_strat_M1, aes(x = estimate, y = -log10(fdr+.05))) +
   geom_point()
 
-gt::gt(subset_M1)
+gt::gt(subset_M1)%>%
+  tab_header(title = "Phase I Metabolites q <0.05 and abs(estimate)>1")
 #write.csv(test28, "lm_metabolites_051523.csv")
 ```
 
 ```{r}
 # now try to visualize densities for some of those top metabolites
 
+
+library(ggridges)
 dat_select <- met_long %>%
-  filter(metabolite %in% subset_M1$metabolite) 
+  filter(metabolite %in% (subset_M1 %>% filter(age_cat == "60-69") %>% pull(metabolite))) %>%
+  filter(age_cat == "60-69") #%>%
+  #mutate(metabolite = str_extract(metabolite, "^.{40}"))
+
+test <- subset_M1 %>% filter(age_cat == "60-69")
+
+ggplot(
+  dat_select,
+  aes(y = metabolite, x = value)) +
+  geom_density_ridges(aes(fill = sex), alpha = 0.6) +
+  theme(axis.text.y = element_blank(),#element_text(size = 3),
+        legend.position = "bottom")+
+  xlim(-2.5, 2.5) +
+  ggtitle("Age 60-69 M vs F standardized metabolite values", subtitle = "For mx with p.adj <0.5 and abs(est)>1")
+#TODO make ylim labels smaller and 
+#TODO move key to bottom
+  
+  
+  #geom_text(aes(y = metabolite, x = 0, label = str_extract(metabolite, "^.{40}")),size = 1)
+
+dat_select2 <- met_long %>%
+  filter(metabolite %in% (subset_M1 %>% filter(age_cat == "70-85") %>% pull(metabolite))) %>%
+  filter(age_cat == "70-85") #%>%
+  #mutate(metabolite = str_extract(metabolite, "^.{40}"))
+
+
+ggplot(
+  dat_select2,
+  aes(y = metabolite, x = value)) +
+  geom_density_ridges(aes(fill = sex), alpha = 0.6) +
+  theme(axis.text.y = element_blank(),#element_text(size = 3),
+        legend.position = "bottom")+
+  xlim(-2.5, 2.5) +
+  ggtitle("Age 70-85 M vs F standardized metabolite values", subtitle = "For mx with p.adj <0.5 and abs(est)>1")
+
 ```
+
+## Phase II M1
+
+```{r}
+dat_phase2 <- dat_sub_metab2 %>%
+  filter(metabolite_status == "Phase 2") %>%
+  # doing center scaling so we can compare estimates?
+  mutate(across(
+    all_of(metab_key2$col.name),scale)
+  )
+
+met_long2 <- dat_phase2 %>%
+  dplyr::select(eid, age_cat, menopause_cat, sex = sex_f31_0_0, all_of(metab_key2$col.name)) %>%
+  pivot_longer(-c(eid, age_cat, menopause_cat, sex), names_to = "metabolite", values_to = "value")
+
+
+long_test_phase2 <- met_long2 %>%
+  filter(age_cat %in% c("<50", "50-59")) %>%
+  nest(.by = c(age_cat, metabolite)) %>%
+  mutate(model = map(data, ~lm(value ~ sex + menopause_cat, data = .x))) %>%
+        mutate(tidied = map(model, tidy)) 
+
+res_lt50_to_59_p2 <- long_test_phase2 %>% select(metabolite, age_cat, tidied) %>%
+  unnest(tidied) %>%
+  filter(term == "sex.L")
+
+long_test_2_phase2 <- met_long2 %>%
+  filter(age_cat %in% c("60-69", "70-85")) %>%
+  nest(.by = c(age_cat, metabolite)) %>%
+  mutate(model = map(data, ~lm(value ~ sex, data = .x))) %>%
+        mutate(tidied = map(model, tidy)) 
+
+res_60_to_85_p2 <- long_test_2_phase2 %>% select(metabolite, age_cat, tidied) %>%
+  unnest(tidied) %>%
+  filter(term == "sex.L")
+
+all_strat_M1_p2 <- bind_rows(res_lt50_to_59_p2, res_60_to_85_p2) %>%
+  mutate(fdr = p.adjust(p.value, "fdr"))
+
+
+subset_M1_p2 <- all_strat_M1_p2 %>%
+  filter(fdr < 0.05, abs(estimate) >0.5) %>%
+  mutate(phase = "Phase II")
+
+length(unique(subset_M1_p2$metabolite))
+unique(subset_M1_p2$age_cat)
+```
+
+```{r eval=FALSE}
+# now try to visualize densities for some of those top metabolites
+library(ggridges)
+dat_select_p2 <- met_long2 %>%
+  filter(metabolite %in% (subset_M1_p2 %>% filter(age_cat == "<50") %>% pull(metabolite))) %>%
+  filter(age_cat == "<50") #%>%
+  #mutate(metabolite = str_extract(metabolite, "^.{40}"))
+
+ggplot(
+  dat_select_p2,
+  aes(y = metabolite, x = value)) +
+  geom_density_ridges(aes(fill = sex), alpha = 0.6) +
+  theme(axis.text.y = element_blank(),#element_text(size = 3),
+        legend.position = "bottom")+
+  xlim(-2.5, 2.5) +
+  ggtitle("Phase II Age 60-69 M vs F standardized metabolite values", subtitle = "For mx with p.adj <0.5 and abs(est)>1")
+#TODO make ylim labels smaller and 
+#TODO move key to bottom
+  
+  
+  #geom_text(aes(y = metabolite, x = 0, label = str_extract(metabolite, "^.{40}")),size = 1)
+
+dat_select2_p2 <- met_long2 %>%
+  filter(metabolite %in% (subset_M1_p2 %>% filter(age_cat == "70-85") %>% pull(metabolite))) %>%
+  filter(age_cat == "70-85") #%>%
+  #mutate(metabolite = str_extract(metabolite, "^.{40}"))
+
+
+ggplot(
+  dat_select2_p2,
+  aes(y = metabolite, x = value)) +
+  geom_density_ridges(aes(fill = sex), alpha = 0.6) +
+  theme(axis.text.y = element_blank(),#element_text(size = 3),
+        legend.position = "bottom")+
+  xlim(-2.5, 2.5) +
+  ggtitle("Phase II Age 70-85 M vs F standardized metabolite values", subtitle = "For mx with p.adj <0.5 and abs(est)>1")
+
+```
+
+## Forest plots 
+
+Group metabolites into classes, then create forest plot per metabolite class. 
+Plotting lipoprotein subclasses separately since there were 11 subclasses for that metabolite group. 
+
+Bars denote effect size in direction for metabolites from M1 that had FDR <0.05. (Bar is 0 if FDR >0.05). 
+
+### Forest plots by metabolite group (excluding Lipoproteins)
+
+```{r}
+met_groups <- read.table("/rawdata/UKBB/Metabolomics_jul2023/Nightingale_biomarker_groups.txt", header = TRUE, fill = T, sep = "\t") %>%
+  mutate(field.showcase = as.character(field_id))
+
+ukb_key_metab <- ukb_key_metab %>%
+  left_join(met_groups)
+
+subset_M1_forest <- subset_M1 %>%
+  left_join(ukb_key_metab %>% select(metabolite = col.name, Group, Subgroup)) %>%
+  mutate(metabolite2 = str_remove(metabolite, pattern = "\\_f.*"))
+
+subset_M1_forest_p2 <- subset_M1_p2 %>%
+  left_join(ukb_key_metab %>% select(metabolite = col.name, Group, Subgroup)) %>%
+  mutate(metabolite2 = str_remove(metabolite, pattern = "\\_f.*"))
+
+subset_overall <- bind_rows(subset_M1_forest, subset_M1_forest_p2) %>%
+  mutate(age_cat = as.factor(age_cat))
+
+unique(subset_M1_forest$Group)
+
+summary(as.factor(subset_M1_forest$Group))
+
+age_cats <- data.frame(age_cat = c("<50", "50-59", "60-69", "70-85"),
+                       default_val = 0)
+
+
+# ggplot(subset_M1_forest,
+#        aes(x = metabolite, y = estimate, ymin = conf.low, 
+#            ymax = conf.high,
+#            col = age_cat, fill = age_cat)) +
+#   geom_hline(yintercept = 0, lty = 2) +
+#   geom_linerange(size = 5, position = position_dodge(width = 0.5)) +
+#   geom_point(size = 3, shape = 21, colour = "white", stroke = 0.5, 
+#              position = position_dodge(width = 0.5)) +
+#   coord_flip() +
+#   theme_minimal()
+
+```
+
+
+
+```{r eval = FALSE}
+phospho <- subset_overall %>%
+  filter(Group == "Phospholipids") %>%
+  #group_by(metabolite) %>%
+  arrange(estimate) %>%
+  #ungroup() %>%
+  #left_join(age_cats) %>%
+  complete(nesting(metabolite2), age_cat, phase,
+           fill = list(estimate = 0)) #%>%
+  #arrange(estimate) %>%
+  #group_by(metabolite) %>%
+  #arrange(estimate)
+  
+
+ggplot(phospho,
+       aes(x = metabolite2, y = estimate, col = age_cat, fill = age_cat)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  theme_minimal() +
+  theme() +
+  ggtitle("Phospholipids") +
+  facet_grid(~phase)
+```
+
+```{r}
+# trying loop to get plot for all the subgroups
+
+subset_nonlipo <- subset_overall %>%
+  filter(Group != "Lipoprotein subclasses" & !is.na(Group))
+
+met_cats <- unique(subset_nonlipo$Group)
+
+map_res <- data.frame(
+  met_cats = met_cats) %>%
+  mutate(data = map(met_cats, ~ subset_nonlipo %>% filter(Group == .x) %>%
+                      arrange(estimate) %>%
+                      complete(nesting(metabolite2), age_cat, phase,
+                               fill = list(estimate = 0))))
+
+map2(.x = map_res$data, .y = met_cats, 
+                        ~ggplot(.x,
+       aes(x = metabolite2, y = estimate, col = age_cat, fill = age_cat)) +
+        geom_col(position = "dodge") +
+        coord_flip() +
+        theme_minimal() +
+        theme() +
+        ggtitle(.y) +
+        facet_grid(~phase))
+```
+
+### Forest Plots For Lipoprotein subclasses
+
+There were 14 unique Lipoprotein subclasses within the dataset. 11 of them had significant metabolites from M1 and I plot these separately below. 
+
+```{r}
+
+subset_lipo <- subset_overall %>%
+  filter(Group == "Lipoprotein subclasses")
+
+lipo_cats <- unique(subset_lipo$Subgroup)
+
+map_res_lipo <- data.frame(
+  lipo_cats = unique(subset_lipo$Subgroup)) %>%
+  mutate(data = map(lipo_cats, ~ subset_lipo %>% filter(Subgroup == .x) %>%
+                      arrange(estimate) %>%
+                      complete(nesting(metabolite2), age_cat, phase,
+                               fill = list(estimate = 0))))
+
+map2(.x = map_res_lipo$data, .y = lipo_cats, 
+                        ~ggplot(.x,
+       aes(x = metabolite2, y = estimate, col = age_cat, fill = age_cat)) +
+        geom_col(position = "dodge") +
+        coord_flip() +
+        theme_minimal() +
+        theme() +
+        ggtitle(.y) +
+        facet_grid(~phase))
+```
+
+
 
 
 
