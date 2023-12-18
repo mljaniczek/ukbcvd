@@ -285,7 +285,9 @@ res_60_to_85 <- long_test_2 %>% select(metabolite, age_cat, tidied) %>%
   filter(term == "sex.L")
 
 all_strat_M1 <- bind_rows(res_lt50_to_59, res_60_to_85) %>%
-  mutate(fdr = p.adjust(p.value, "fdr"))
+  mutate(fdr = p.adjust(p.value, "fdr"),
+         phase = "Phase I",
+         met_threshold = fdr < 0.05 & abs(estimate)>0.5) 
 
 
 subset_M1 <- all_strat_M1 %>%
@@ -295,11 +297,9 @@ subset_M1 <- all_strat_M1 %>%
 #length(unique(subset_M1$metabolite))
 #unique(subset_M1$age_cat)
 
-ggplot(all_strat_M1, aes(x = estimate, y = -log10(fdr+.05))) +
-  geom_point()
 
 gt::gt(subset_M1)%>%
-  tab_header(title = "Phase I Metabolites q <0.05 and abs(estimate)>1")
+  tab_header(title = "Phase I Metabolites q <0.05 and abs(estimate)>0.5")
 #write.csv(test28, "lm_metabolites_051523.csv")
 ```
 
@@ -322,7 +322,7 @@ ggplot(
   theme(axis.text.y = element_blank(),#element_text(size = 3),
         legend.position = "bottom")+
   xlim(-2.5, 2.5) +
-  ggtitle("Age 60-69 M vs F standardized metabolite values", subtitle = "For mx with p.adj <0.5 and abs(est)>1")
+  ggtitle("Age 60-69 M vs F standardized metabolite values", subtitle = "For mx with p.adj <0.5 and abs(est)>0.5")
 #TODO make ylim labels smaller and 
 #TODO move key to bottom
   
@@ -342,7 +342,7 @@ ggplot(
   theme(axis.text.y = element_blank(),#element_text(size = 3),
         legend.position = "bottom")+
   xlim(-2.5, 2.5) +
-  ggtitle("Age 70-85 M vs F standardized metabolite values", subtitle = "For mx with p.adj <0.5 and abs(est)>1")
+  ggtitle("Age 70-85 M vs F standardized metabolite values", subtitle = "For mx with p.adj <0.5 and abs(est)>0.5")
 
 ```
 
@@ -382,7 +382,9 @@ res_60_to_85_p2 <- long_test_2_phase2 %>% select(metabolite, age_cat, tidied) %>
   filter(term == "sex.L")
 
 all_strat_M1_p2 <- bind_rows(res_lt50_to_59_p2, res_60_to_85_p2) %>%
-  mutate(fdr = p.adjust(p.value, "fdr"))
+    mutate(fdr = p.adjust(p.value, "fdr"),
+         phase = "Phase II",
+         met_threshold_p2 = fdr < 0.05 & abs(estimate)>0.5) 
 
 
 subset_M1_p2 <- all_strat_M1_p2 %>%
@@ -392,6 +394,7 @@ subset_M1_p2 <- all_strat_M1_p2 %>%
 length(unique(subset_M1_p2$metabolite))
 unique(subset_M1_p2$age_cat)
 ```
+
 
 ```{r eval=FALSE}
 # now try to visualize densities for some of those top metabolites
@@ -408,7 +411,7 @@ ggplot(
   theme(axis.text.y = element_blank(),#element_text(size = 3),
         legend.position = "bottom")+
   xlim(-2.5, 2.5) +
-  ggtitle("Phase II Age 60-69 M vs F standardized metabolite values", subtitle = "For mx with p.adj <0.5 and abs(est)>1")
+  ggtitle("Phase II Age 60-69 M vs F standardized metabolite values", subtitle = "For mx with p.adj <0.5 and abs(est)>0.5")
 #TODO make ylim labels smaller and 
 #TODO move key to bottom
   
@@ -428,9 +431,86 @@ ggplot(
   theme(axis.text.y = element_blank(),#element_text(size = 3),
         legend.position = "bottom")+
   xlim(-2.5, 2.5) +
-  ggtitle("Phase II Age 70-85 M vs F standardized metabolite values", subtitle = "For mx with p.adj <0.5 and abs(est)>1")
+  ggtitle("Phase II Age 70-85 M vs F standardized metabolite values", subtitle = "For mx with p.adj <0.5 and abs(est)>0.5")
 
 ```
+
+## Summarizing M1 Results
+
+Below I summarize which of the metabolites in Phase I which met the threshold of having BOTH FDR-adjusted pvalue < 0.05 AND an absolute value estimate in the model of >0.5 also met the same threshold criteria in Phase II data. 
+
+```{r}
+
+
+all_strat_both_phases_wide <- left_join(
+  all_strat_M1 %>% select(metabolite, age_cat, met_threshold, fdr),
+  all_strat_M1_p2 %>% select(metabolite, age_cat, met_threshold_p2)) %>%
+  mutate(sig_category = ifelse(
+    met_threshold == FALSE & met_threshold_p2 == FALSE, "Didn't meet threshold",
+    ifelse( met_threshold == TRUE & met_threshold_p2 == FALSE, "Met threshold, not validated",
+            ifelse(
+              met_threshold == TRUE & met_threshold_p2 == TRUE, "Validated in Phase 2", "Didn't meet threshold"
+            ))
+  ))
+
+res_M1 <- all_strat_M1 %>%
+  left_join(all_strat_both_phases_wide %>% select(metabolite, age_cat, sig_category))
+
+# combine p1 and p2 full data
+all_strat_both_phases_long <- bind_rows(res_M1, all_strat_M1_p2) %>%
+  select(metabolite, age_cat, phase, sig_category, estimate, fdr, met_threshold_p1 = met_threshold, met_threshold_p2)
+
+save(all_strat_both_phases_long, file = "results_mod1_bothphases.Rdata")
+
+write.csv(all_strat_both_phases_long, file = "results_mod1_bothphases.csv")
+
+# volcano plot
+ggplot(res_M1, aes(x = estimate, y = -log10(fdr+1), color = sig_category, alpha = 0.1)) +
+  geom_point() +
+  scale_color_manual(values = c("gray", "black", "blue"), name = "")+
+  facet_wrap(~age_cat) +
+  guides(alpha = FALSE) +
+  geom_hline(yintercept = -log10(1.05), linetype = "dashed", color = "red") +
+  xlab("Model 1 Sex Coefficient from Phase I") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+#ggsave("m1_volcano.png", height = 4, width = 6)
+
+# TODO get unique metabolites in each strata that met validation threshold
+
+res_M1 %>%
+  tbl_cross(row = age_cat, col = sig_category)
+
+
+original_sig_mets <- res_M1 %>%
+  filter(met_threshold == TRUE)
+
+validated_mets <- res_M1 %>%
+  filter(sig_category == "Validated in Phase 2")
+```
+
+number of unique metabolites that met the threshold in Phase I 
+
+```{r}
+length(unique(original_sig_mets$metabolite))
+```
+
+ number of unique validated metabolites where the metabolite met the thresholds in both phase 1 and phase 2. Saved table of these 81 unique metabolites and their metabolite group and subgroup (validated_unique_mets_81_details.csv). 
+ 
+```{r}
+length(unique(validated_mets$metabolite))
+
+
+#validated_mets_details <- validated_mets %>% select(metabolite) %>%
+#  group_by(metabolite) %>%
+#  slice(1)%>%
+#  ungroup() %>%
+#  left_join(ukb_key_metab %>% select(metabolite = col.name, title, units, Group, Subgroup))
+
+#write.csv(validated_mets_details, file = "validated_unique_mets_81_details.csv")
+```
+
+
 
 ## Forest plots 
 
