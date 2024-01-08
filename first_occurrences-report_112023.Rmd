@@ -106,21 +106,21 @@ First, we can examine the distribution of incidence of our conditions of interes
 
 ```{r}
 # tab_disease <- dat_sub_metab2 %>%
-#   select(sex_f31_0_0, metabolite_status, 
+#  dplyr::select(sex_f31_0_0, metabolite_status, 
 #          #all_of(names(unlist(outcomedatlist))), all_of(names(unlist(outcomedatlist_fo))),
 #          cad, cad_fo, afib, afib_fo, stroke, stroke_fo, hypertension, hypertension_fo, diabetes_t2, diabetes_t2_fo
 #          )
 
 # now reducing it to just be first occurences 
 tab_disease <- dat_sub_metab2 %>%
-  select(sex_f31_0_0, metabolite_status, 
+  dplyr::select(sex_f31_0_0, metabolite_status, 
          #all_of(names(unlist(outcomedatlist))), all_of(names(unlist(outcomedatlist_fo))),
          cad_fo, afib_fo,stroke_fo, hypertension_fo, diabetes_t2_fo
          )
 
 metab_tab_phase1_sex <- tab_disease %>%
   filter(metabolite_status == "Phase 1") %>%
-  select(-metabolite_status) %>%
+  dplyr::select(-metabolite_status) %>%
   tbl_summary(by = sex_f31_0_0, missing = "no") %>%
   bold_labels() %>%
   #add_n() %>%
@@ -129,13 +129,13 @@ metab_tab_phase1_sex <- tab_disease %>%
 
 metab_tab_phase2_sex <- tab_disease %>%
   filter(metabolite_status == "Phase 2") %>%
-  select(-metabolite_status) %>%
+  dplyr::select(-metabolite_status) %>%
   tbl_summary(by = sex_f31_0_0, missing = "no") %>%
   bold_labels() %>%
   add_overall()
 
 all_tab_phase1_outcome <- tab_disease %>%
-  select(-metabolite_status) %>%
+  dplyr::select(-metabolite_status) %>%
   tbl_summary(by = sex_f31_0_0, missing = "no") %>%
   bold_labels() %>%
   #add_n() %>%
@@ -168,11 +168,11 @@ For the models, we stratify by age in the following strata <50, 50-59, 60-69, 70
 # table for age strata and sex 
 
 tabdat_age <- dat_sub_metab2 %>%
-  select(age_cat, sex_f31_0_0, metabolite_status)
+  dplyr::select(age_cat, sex_f31_0_0, metabolite_status)
 
 age_tab_phase1_sex <- tabdat_age %>%
   filter(metabolite_status == "Phase 1") %>%
-  select(-metabolite_status) %>%
+  dplyr::select(-metabolite_status) %>%
   tbl_summary(by = sex_f31_0_0, missing = "no") %>%
   bold_labels() %>%
   #add_n() %>%
@@ -181,13 +181,13 @@ age_tab_phase1_sex <- tabdat_age %>%
 
 age_tab_phase2_sex <- tabdat_age %>%
   filter(metabolite_status == "Phase 2") %>%
-  select(-metabolite_status) %>%
+  dplyr::select(-metabolite_status) %>%
   tbl_summary(by = sex_f31_0_0, missing = "no") %>%
   bold_labels() %>%
   add_overall()
 
 all_tab_age <- tabdat_age %>%
-  select(-metabolite_status) %>%
+  dplyr::select(-metabolite_status) %>%
   tbl_summary(by = sex_f31_0_0, missing = "no") %>%
   bold_labels() %>%
   #add_n() %>%
@@ -239,6 +239,33 @@ dat_sub_metab2 <- dat_sub_metab2 %>%
       ifelse(sex_f31_0_0 == "Male", "No",
       had_menopause_f2724_0_0))))
 
+# now recode race
+
+dat_sub_metab2 <- dat_sub_metab2 %>%
+  mutate(
+    race = ifelse(
+      ethnic_background_f21000_0_0 %in% c("White", "British", "Irish", "Any other white background"), "White",
+      ifelse(
+        ethnic_background_f21000_0_0 %in% c("Black or Black British", "Caribbean", "African", "Any other Black background"), "Black",
+        ifelse(ethnic_background_f21000_0_0 %in% c("Asian or Asian British", "Chinese", "Any other Asian background"), "Asian",
+               ifelse(ethnic_background_f21000_0_0 %in% c("Indian", "Pakistani", "Bangladeshi"), "Southeast Asian",
+                      ifelse(ethnic_background_f21000_0_0 %in% c("Mixed", "White and Black Caribbean", "White and Black African", "White and Asian", "Any other mixed background"), "Mixed",
+                             ifelse((ethnic_background_f21000_0_0 %in% c("Prefer not to answer", "Do not know"))|is.na(ethnic_background_f21000_0_0), "Unknown", 
+                                    ifelse(
+                                      ethnic_background_f21000_0_0 %in% c("Other ethnic group"), "Other", NA)))))
+      )
+    )
+  )
+
+dat_sub_metab2 <- dat_sub_metab2 %>%
+  mutate(race = forcats::fct_relevel(as.factor(race), "White", "Black",
+                                      "Southeast Asian", "Asian", "Other", "Mixed", "Unknown"))
+
+dat_sub_metab2 %>%
+  dplyr::select(race, ethnic_background_f21000_0_0) %>%
+  tbl_summary(by = race) %>%
+  add_overall()
+
 metab_key2 <- ukb_key_metab %>%
   filter(!str_detect(col.name, "qc_flag"))%>%
   filter(field.showcase %in% 23400:24000) %>%
@@ -254,7 +281,7 @@ dat_phase1 <- dat_sub_metab2 %>%
 
 # I don't think we need to do this log transformation??
 met1 <- dat_phase1 %>%
-  select(all_of(metab_key2$col.name))# %>%
+  dplyr::select(all_of(metab_key2$col.name))# %>%
  # transmute_all(~scale(log(. +.01), center = FALSE))
 
 # should I go to long format??
@@ -270,7 +297,7 @@ long_test_1 <- met_long %>%
   mutate(model = map(data, ~lm(value ~ sex + menopause_cat, data = .x))) %>%
         mutate(tidied = map(model, ~tidy(.x, conf.int = T))) 
 
-res_lt50_to_59 <- long_test_1 %>% select(metabolite, age_cat, tidied) %>%
+res_lt50_to_59 <- long_test_1 %>% dplyr::select(metabolite, age_cat, tidied) %>%
   unnest(tidied) %>%
   filter(term == "sex.L")
 
@@ -280,7 +307,7 @@ long_test_2 <- met_long %>%
   mutate(model = map(data, ~lm(value ~ sex, data = .x))) %>%
         mutate(tidied = map(model, ~tidy(.x, conf.int = T))) 
 
-res_60_to_85 <- long_test_2 %>% select(metabolite, age_cat, tidied) %>%
+res_60_to_85 <- long_test_2 %>% dplyr::select(metabolite, age_cat, tidied) %>%
   unnest(tidied) %>%
   filter(term == "sex.L")
 
@@ -367,7 +394,7 @@ long_test_phase2 <- met_long2 %>%
   mutate(model = map(data, ~lm(value ~ sex + menopause_cat, data = .x))) %>%
         mutate(tidied = map(model, tidy)) 
 
-res_lt50_to_59_p2 <- long_test_phase2 %>% select(metabolite, age_cat, tidied) %>%
+res_lt50_to_59_p2 <- long_test_phase2 %>% dplyr::select(metabolite, age_cat, tidied) %>%
   unnest(tidied) %>%
   filter(term == "sex.L")
 
@@ -377,7 +404,7 @@ long_test_2_phase2 <- met_long2 %>%
   mutate(model = map(data, ~lm(value ~ sex, data = .x))) %>%
         mutate(tidied = map(model, tidy)) 
 
-res_60_to_85_p2 <- long_test_2_phase2 %>% select(metabolite, age_cat, tidied) %>%
+res_60_to_85_p2 <- long_test_2_phase2 %>% dplyr::select(metabolite, age_cat, tidied) %>%
   unnest(tidied) %>%
   filter(term == "sex.L")
 
@@ -443,8 +470,8 @@ Below I summarize which of the metabolites in Phase I which met the threshold of
 
 
 all_strat_both_phases_wide <- left_join(
-  all_strat_M1 %>% select(metabolite, age_cat, met_threshold, fdr),
-  all_strat_M1_p2 %>% select(metabolite, age_cat, met_threshold_p2)) %>%
+  all_strat_M1 %>% dplyr::select(metabolite, age_cat, met_threshold, fdr),
+  all_strat_M1_p2 %>% dplyr::select(metabolite, age_cat, met_threshold_p2)) %>%
   mutate(sig_category = ifelse(
     met_threshold == FALSE & met_threshold_p2 == FALSE, "Didn't meet threshold",
     ifelse( met_threshold == TRUE & met_threshold_p2 == FALSE, "Met threshold, not validated",
@@ -454,15 +481,15 @@ all_strat_both_phases_wide <- left_join(
   ))
 
 res_M1 <- all_strat_M1 %>%
-  left_join(all_strat_both_phases_wide %>% select(metabolite, age_cat, sig_category))
+  left_join(all_strat_both_phases_wide %>% dplyr::select(metabolite, age_cat, sig_category))
 
 # combine p1 and p2 full data
 all_strat_both_phases_long <- bind_rows(res_M1, all_strat_M1_p2) %>%
-  select(metabolite, age_cat, phase, sig_category, estimate, fdr, met_threshold_p1 = met_threshold, met_threshold_p2)
+  dplyr::select(metabolite, age_cat, phase, sig_category, estimate, fdr, met_threshold_p1 = met_threshold, met_threshold_p2)
 
-save(all_strat_both_phases_long, file = "results_mod1_bothphases.Rdata")
+#save(all_strat_both_phases_long, file = "results_mod1_bothphases.Rdata")
 
-write.csv(all_strat_both_phases_long, file = "results_mod1_bothphases.csv")
+#write.csv(all_strat_both_phases_long, file = "results_mod1_bothphases.csv")
 
 # volcano plot
 ggplot(res_M1, aes(x = estimate, y = -log10(fdr+1), color = sig_category, alpha = 0.1)) +
@@ -501,11 +528,11 @@ length(unique(original_sig_mets$metabolite))
 length(unique(validated_mets$metabolite))
 
 
-#validated_mets_details <- validated_mets %>% select(metabolite) %>%
+#validated_mets_details <- validated_mets %>% dplyr::select(metabolite) %>%
 #  group_by(metabolite) %>%
 #  slice(1)%>%
 #  ungroup() %>%
-#  left_join(ukb_key_metab %>% select(metabolite = col.name, title, units, Group, Subgroup))
+#  left_join(ukb_key_metab %>% dplyr::select(metabolite = col.name, title, units, Group, Subgroup))
 
 #write.csv(validated_mets_details, file = "validated_unique_mets_81_details.csv")
 ```
@@ -529,11 +556,11 @@ ukb_key_metab <- ukb_key_metab %>%
   left_join(met_groups)
 
 subset_M1_forest <- subset_M1 %>%
-  left_join(ukb_key_metab %>% select(metabolite = col.name, Group, Subgroup)) %>%
+  left_join(ukb_key_metab %>% dplyr::select(metabolite = col.name, Group, Subgroup)) %>%
   mutate(metabolite2 = str_remove(metabolite, pattern = "\\_f.*"))
 
 subset_M1_forest_p2 <- subset_M1_p2 %>%
-  left_join(ukb_key_metab %>% select(metabolite = col.name, Group, Subgroup)) %>%
+  left_join(ukb_key_metab %>% dplyr::select(metabolite = col.name, Group, Subgroup)) %>%
   mutate(metabolite2 = str_remove(metabolite, pattern = "\\_f.*"))
 
 subset_overall <- bind_rows(subset_M1_forest, subset_M1_forest_p2) %>%
@@ -642,7 +669,99 @@ map2(.x = map_res_lipo$data, .y = lipo_cats,
 ```
 
 
+Standardize metabolite (phase 1 and phase 2 separately)
+Stratify into age groups
+Fit M1
+Combine results across age groups
+Do FDR correction
+Identify metabolites with FDRp < 0.05 and Effect size > 0.5 SD
+Group metabolites into classes
+Forest plot per metabolite class
+In the plot, a metabolite is present if at least one of the age strata is significant for the metabolite
+Bars denote effect size with sign (direction). Show bars only if FDRp < 0.05 for that age strata
 
+
+# Metabolite class Principle component analysis
+
+For each metabolite class and within age strata, calculate First PC
+
+Test the first PC for each metabolite class with sex in M1 and output p value/FDR p/effect size/SD
+
+```{r eval = FALSE}
+# group metabolites by metabolite class
+
+# group by age strata
+
+# calculate first principle component of metabolites in metabolite class within each age strata
+
+
+# Model PC ~ sex, strata = age_strata
+
+
+# output P-value, Effect size, SD, FDR
+
+met_long_group <- dat_phase1 %>%
+  dplyr::select(eid, age_cat, menopause_cat, sex = sex_f31_0_0, all_of(metab_key2$col.name)) %>%
+  pivot_longer(-c(eid, age_cat, menopause_cat, sex), names_to = "metabolite", values_to = "value") %>%
+  left_join(ukb_key_metab %>% dplyr::select(metabolite = col.name, Group, Subgroup))
+  
+
+
+subset_nonlipo_group <- met_long_group %>%
+  filter(Group != "Lipoprotein subclasses") %>%
+  filter(age_cat %in% c("<50", "50-59"))
+
+met_cats <- unique(subset_nonlipo_group$Group)
+
+age_cats <- c("<50", "50-59", "60-69", "70-85")
+
+library(reshape2)
+
+map_res <- data.frame(
+  met_cats = met_cats) %>%
+  mutate(data = map(met_cats, ~ subset_nonlipo_group %>% filter(Group == .x) %>%
+                      dplyr::select(metabolite, value, eid, age_cat) %>%
+                      nest(.by = c(age_cat)) %>%
+                      acast(eid~metabolite, value.var = "value")))
+
+
+long_test_1 <- met_long %>%
+  filter(age_cat %in% c("<50", "50-59")) %>%
+  nest(.by = c(age_cat, metabolite)) %>%
+  mutate(model = map(data, ~lm(value ~ sex + menopause_cat, data = .x))) %>%
+        mutate(tidied = map(model, ~tidy(.x, conf.int = T))) 
+
+res_lt50_to_59 <- long_test_1 %>% dplyr::select(metabolite, age_cat, tidied) %>%
+  unnest(tidied) %>%
+  filter(term == "sex.L")
+
+long_test_2 <- met_long %>%
+  filter(age_cat %in% c("60-69", "70-85")) %>%
+  nest(.by = c(age_cat, metabolite)) %>%
+  mutate(model = map(data, ~lm(value ~ sex, data = .x))) %>%
+        mutate(tidied = map(model, ~tidy(.x, conf.int = T))) 
+
+res_60_to_85 <- long_test_2 %>% dplyr::select(metabolite, age_cat, tidied) %>%
+  unnest(tidied) %>%
+  filter(term == "sex.L")
+
+all_strat_M1 <- bind_rows(res_lt50_to_59, res_60_to_85) %>%
+  mutate(fdr = p.adjust(p.value, "fdr"),
+         phase = "Phase I",
+         met_threshold = fdr < 0.05 & abs(estimate)>0.5) 
+
+
+subset_M1 <- all_strat_M1 %>%
+  filter(fdr < 0.05 & abs(estimate)>.5) %>%
+  mutate(phase = "Phase I") # what would be a "meaningful" estimate?
+
+#length(unique(subset_M1$metabolite))
+#unique(subset_M1$age_cat)
+
+
+gt::gt(subset_M1)%>%
+  tab_header(title = "Phase I Metabolites q <0.05 and abs(estimate)>0.5")
+```
 
 
 
@@ -652,9 +771,316 @@ Adjust for:
 
 * Smoking status 
 * Race (group into white (including british and irish), black, asian, southeast asian, mixed/other)
-* BMI
+* BMI mediation analysis (stratified by age)
+  Outcome model: Metabolite ~ Sex (M/F) + BMI + confounders 
+  Mediator model: BMI ~ Sex + confounders 
+  Use R package `mediation` to obtain the percent of the total effect of Sex  on the metabolite that is mediated via BMI
 
 Within each age strata, fit the M2 for all metabolites and get p-values for exposure. Do q-value adjustment, use q <0.05. 
+
+```{r}
+
+# fun tion to strip the fat of lms
+
+
+
+met_long2 <- dat_phase1 %>%
+  dplyr::select(eid, age_cat, race, smoker = current_tobacco_smoking_f1239_0_0,
+                bmi = body_mass_index_bmi_f21001_0_0, menopause_cat, sex = sex_f31_0_0, all_of(metab_key2$col.name)) %>%
+  pivot_longer(-c(eid, age_cat, race, smoker, bmi, menopause_cat, sex), names_to = "metabolite", values_to = "value")
+
+library(mediation)
+long_test_3 <- met_long2 %>%
+  filter(age_cat %in% c("<50", "50-59")) %>%
+  drop_na()%>% 
+  nest(.by = c(age_cat, metabolite)) %>%
+  # set up both outcome model (model_y) and mediator model (model_m)
+  mutate(model_y = map(data, ~lm(value ~ sex + menopause_cat + bmi + smoker + race, data = .x)))
+
+long_test_3 <- long_test_3 %>%
+  mutate(tidied_y = map(model_y, ~tidy(.x, conf.int = T)))
+
+long_test_3 <- long_test_3 %>%
+  mutate(
+         model_m = map(data, ~lm(bmi ~ sex + menopause_cat + smoker + race, data = .x)))
+
+
+long_test_4 <- met_long2 %>%
+  filter(age_cat %in% c("60-69", "70-85")) %>%
+  drop_na() %>%
+  nest(.by = c(age_cat, metabolite)) %>%
+  # set up both outcome model (model_y) and mediator model (model_m)
+  mutate(model_y = map(data, ~lm(value ~ sex + bmi + smoker + race, data = .x,
+                                 x = FALSE, y = FALSE, model = FALSE)),
+         model_m = map(data, ~lm(bmi ~ sex + smoker + race, data = .x)))%>%
+        mutate(tidied_y = map(model_y, ~tidy(.x, conf.int = T))) 
+
+
+#save(ukb_key_metab, file = "processed_met_key.Rdata")
+
+# mediation not working still 
+# long_test_3 <- long_test_3 %>%
+#   mutate(
+#          mediation_res = map2(model_m, model_y, 
+#                               ~mediate(model.m = .x, model.y = .y,
+#                                        boot = TRUE, 
+#                                        treat = "sex",
+#                                        mediator = "bmi"))) %>%
+#         mutate(tidied_m = map(mediation_res, ~tidy(.x, conf.int = T))) 
+
+res_lt50_to_59_M2 <- long_test_3 %>% dplyr::select(metabolite, age_cat, tidied_y) %>%
+  unnest(tidied_y) %>%
+  filter(term == "sex.L")
+
+# med_res_lt50_to_59_M2 <- long_test_3 %>% dplyr::select(metabolite, age_cat, tidied_m) %>%
+#   unnest(tidied_m)# %>%
+  #filter(term == "sex.L")
+
+
+
+res_60_to_85_M2 <- long_test_4 %>% dplyr::select(metabolite, age_cat, tidied_y) %>%
+  unnest(tidied_y) %>%
+  filter(term == "sex.L")
+
+# long_test_4 <- long_test_4 %>%
+#   mutate(
+#          mediation_res = map2(model_m, model_y, 
+#                               ~mediate(model.m = .x, model.y = .y,
+#                                        boot = TRUE, 
+#                                        treat = "sex",
+#                                        mediator = "bmi")),
+#          tidied_m = map(mediation_res, ~tidy(.x, conf.int = T))) 
+
+# med_res_60_to_85_M2 <- long_test_4 %>%dplyr::select(metabolite, age_cat, tidied_m) %>%
+#   unnest(tidied_m) #%>%
+  #filter(term == "sex.L")
+
+all_strat_M2 <- bind_rows(res_lt50_to_59_M2, res_60_to_85_M2) %>%
+  mutate(fdr = p.adjust(p.value, "fdr"),
+         phase = "Phase I",
+         met_threshold_m2 = fdr < 0.05 & abs(estimate)>0.5) 
+
+
+# med_all_strat_M2 <- bind_rows(med_res_lt50_to_59_M2, med_res_60_to_85_M2) %>%
+#   mutate(fdr = p.adjust(p.value, "fdr"),
+#          phase = "Phase I",
+#          met_threshold = fdr < 0.05 & abs(estimate)>0.5) 
+
+subset_M2 <- all_strat_M2 %>%
+  filter(fdr < 0.05 & abs(estimate)>.5) %>%
+  mutate(phase = "Phase I")
+
+
+#gt::gt(subset_M2)%>%
+#  tab_header(title = "M2 Phase I Metabolites q <0.05 and abs(estimate)>0.5")
+```
+
+## M2 Phase II
+
+```{r}
+
+# fun tion to strip the fat of lms
+
+
+
+met_long2_p2 <- dat_phase2 %>%
+  dplyr::select(eid, age_cat, race, smoker = current_tobacco_smoking_f1239_0_0,
+                bmi = body_mass_index_bmi_f21001_0_0, menopause_cat, sex = sex_f31_0_0, all_of(metab_key2$col.name)) %>%
+  pivot_longer(-c(eid, age_cat, race, smoker, bmi, menopause_cat, sex), names_to = "metabolite", values_to = "value")
+
+library(mediation)
+long_test_3_p2 <- met_long2_p2 %>%
+  filter(age_cat %in% c("<50", "50-59")) %>%
+  drop_na()%>% 
+  nest(.by = c(age_cat, metabolite)) %>%
+  # set up both outcome model (model_y) and mediator model (model_m)
+  mutate(model_y = map(data, ~lm(value ~ sex + menopause_cat + bmi + smoker + race, data = .x)))
+
+long_test_3_p2 <- long_test_3_p2 %>%
+  mutate(tidied_y = map(model_y, ~tidy(.x, conf.int = T))) %>%
+  mutate(model_m = map(data, ~lm(bmi ~ sex + menopause_cat + smoker + race, data = .x)))
+
+
+long_test_4_p2 <- met_long2_p2 %>%
+  filter(age_cat %in% c("60-69", "70-85")) %>%
+  drop_na() %>%
+  nest(.by = c(age_cat, metabolite)) %>%
+  # set up both outcome model (model_y) and mediator model (model_m)
+  mutate(model_y = map(data, ~lm(value ~ sex + bmi + smoker + race, data = .x,
+                                 x = FALSE, y = FALSE, model = FALSE)),
+         model_m = map(data, ~lm(bmi ~ sex + smoker + race, data = .x)))%>%
+        mutate(tidied_y = map(model_y, ~tidy(.x, conf.int = T))) 
+
+
+#save(ukb_key_metab, file = "processed_met_key.Rdata")
+
+# mediation not working still 
+# long_test_3 <- long_test_3 %>%
+#   mutate(
+#          mediation_res = map2(model_m, model_y, 
+#                               ~mediate(model.m = .x, model.y = .y,
+#                                        boot = TRUE, 
+#                                        treat = "sex",
+#                                        mediator = "bmi"))) %>%
+#         mutate(tidied_m = map(mediation_res, ~tidy(.x, conf.int = T))) 
+
+res_lt50_to_59_M2_p2 <- long_test_3_p2 %>% dplyr::select(metabolite, age_cat, tidied_y) %>%
+  unnest(tidied_y) %>%
+  filter(term == "sex.L")
+
+# med_res_lt50_to_59_M2 <- long_test_3 %>% dplyr::select(metabolite, age_cat, tidied_m) %>%
+#   unnest(tidied_m)# %>%
+  #filter(term == "sex.L")
+
+
+
+res_60_to_85_M2_p2 <- long_test_4_p2 %>% dplyr::select(metabolite, age_cat, tidied_y) %>%
+  unnest(tidied_y) %>%
+  filter(term == "sex.L")
+
+# long_test_4 <- long_test_4 %>%
+#   mutate(
+#          mediation_res = map2(model_m, model_y, 
+#                               ~mediate(model.m = .x, model.y = .y,
+#                                        boot = TRUE, 
+#                                        treat = "sex",
+#                                        mediator = "bmi")),
+#          tidied_m = map(mediation_res, ~tidy(.x, conf.int = T))) 
+
+# med_res_60_to_85_M2 <- long_test_4 %>% dplyr::select(metabolite, age_cat, tidied_m) %>%
+#   unnest(tidied_m) #%>%
+  #filter(term == "sex.L")
+
+all_strat_M2_p2 <- bind_rows(res_lt50_to_59_M2_p2, res_60_to_85_M2_p2) %>%
+  mutate(fdr = p.adjust(p.value, "fdr"),
+         phase = "Phase II",
+         met_threshold_m2_p2 = fdr < 0.05 & abs(estimate)>0.5) 
+
+
+# med_all_strat_M2 <- bind_rows(med_res_lt50_to_59_M2, med_res_60_to_85_M2) %>%
+#   mutate(fdr = p.adjust(p.value, "fdr"),
+#          phase = "Phase I",
+#          met_threshold = fdr < 0.05 & abs(estimate)>0.5) 
+
+subset_M2_p2 <- all_strat_M2_p2 %>%
+  filter(fdr < 0.05 & abs(estimate)>.5) %>%
+  mutate(phase = "Phase II")
+
+```
+
+## Summarizing M2 Results
+
+Below I summarize which of the metabolites in Phase I which met the threshold of having BOTH FDR-adjusted pvalue < 0.05 AND an absolute value estimate in the model of >0.5 also met the same threshold criteria in Phase II data. 
+
+```{r}
+
+
+all_strat_both_phases_wide_M2 <- left_join(
+  all_strat_M2 %>% dplyr::select(metabolite, age_cat, met_threshold_m2, fdr),
+  all_strat_M2_p2 %>% dplyr::select(metabolite, age_cat, met_threshold_m2_p2)) %>%
+  mutate(sig_category_m2 = ifelse(
+    met_threshold_m2 == FALSE & met_threshold_m2_p2 == FALSE, "Didn't meet threshold",
+    ifelse( met_threshold_m2 == TRUE & met_threshold_m2_p2 == FALSE, "Met threshold, not validated",
+            ifelse(
+              met_threshold_m2 == TRUE & met_threshold_m2_p2 == TRUE, "Validated in Phase 2", "Didn't meet threshold"
+            ))
+  ))
+
+summary(as.factor(all_strat_both_phases_wide_M2$sig_category_m2))
+
+res_M2 <- all_strat_M2 %>%
+  left_join(all_strat_both_phases_wide_M2 %>% dplyr::select(metabolite, age_cat, sig_category_m2))
+
+# combine p1 and p2 full data
+all_strat_both_phases_long_m2 <- bind_rows(res_M2, all_strat_M2_p2) %>%
+  dplyr::select(metabolite, age_cat, phase, sig_category_m2, estimate, fdr, met_threshold_m2_p1 = met_threshold_m2, met_threshold_m2_p2)
+
+save(all_strat_both_phases_long_m2, file = "results_mod2_bothphases.Rdata")
+
+write.csv(all_strat_both_phases_long_m2, file = "results_mod2_bothphases.csv")
+
+# volcano plot
+ggplot(res_M2, aes(x = estimate, y = -log10(fdr+1), color = sig_category_m2, alpha = 0.1)) +
+  geom_point() +
+  scale_color_manual(values = c("gray", "black", "blue"), name = "")+
+  facet_wrap(~age_cat) +
+  guides(alpha = FALSE) +
+  geom_hline(yintercept = -log10(1.05), linetype = "dashed", color = "red") +
+  xlab("Model 2 Sex Coefficient from Phase I") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+#ggsave("m2_volcano.png", height = 4, width = 6)
+
+# TODO get unique metabolites in each strata that met validation threshold
+
+res_M2 %>%
+  tbl_cross(row = age_cat, col = sig_category_m2)
+
+
+original_sig_mets_m2 <- res_M2 %>%
+  filter(met_threshold_m2 == TRUE)
+
+validated_mets_m2 <- res_M2 %>%
+  filter(sig_category_m2 == "Validated in Phase 2")
+```
+
+number of unique metabolites that met the threshold in Model 2 in Phase I 
+
+```{r}
+length(unique(original_sig_mets_m2$metabolite))
+```
+
+ number of unique validated metabolites where the metabolite met the thresholds in Model 2 both phase 1 and phase 2. Saved table of these 57 unique metabolites and their metabolite group and subgroup (validated_unique_mets_m2_57_details.csv). 
+ 
+```{r}
+length(unique(validated_mets_m2$metabolite))
+
+
+#validated_mets_details <- validated_mets %>%dplyr::select(metabolite) %>%
+#  group_by(metabolite) %>%
+#  slice(1)%>%
+#  ungroup() %>%
+#  left_join(ukb_key_metab %>%dplyr::select(metabolite = col.name, title, units, Group, Subgroup))
+
+#write.csv(validated_mets_details, file = "validated_unique_mets_81_details.csv")
+```
+
+NOW get mx that are sig in both M1 and M2 in Phase I and Phase 2
+
+```{r}
+res_overall <- res_M1 %>%
+  left_join(res_M2, by = c("metabolite", "age_cat")) %>%
+    mutate(sig_category_overall = ifelse(
+    sig_category == "Validated in Phase 2" & sig_category_m2 == "Validated in Phase 2", "Validated in P2 and M2",
+    ifelse( sig_category == "Validated in Phase 2" & sig_category_m2 != "Validated in Phase 2", "Validated in P2, not in M2", "Not validated/Didn't meet threshold")))
+
+
+# volcano plot
+ggplot(res_overall, aes(x = estimate.y, y = -log10(fdr.y+1), color = sig_category_overall, alpha = 0.1)) +
+  geom_point() +
+  scale_color_manual(values = c("gray", "black", "blue"), name = "")+
+  facet_wrap(~age_cat) +
+  guides(alpha = FALSE) +
+  geom_hline(yintercept = -log10(1.05), linetype = "dashed", color = "red") +
+  xlab("Model 2 Sex Coefficient from Phase I") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+summary(as.factor(res_overall$sig_category_overall))
+
+```
+
+
+
+
+```{r}
+# enrichment analysis
+
+#BiocManager::install("fgsea")
+#library(BiocManager)
+library(fgsea)
+```
+
 
 # Validation 
 
