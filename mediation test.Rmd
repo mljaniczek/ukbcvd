@@ -1,0 +1,64 @@
+---
+title: "Mediation test"
+author: "Margaret Janiczek"
+date: "2024-01-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(mediation)
+library(tidyr)
+library(broom)
+library(broom.mixed)
+
+data(jobs)
+
+mediator_model <- lm(job_seek ~ treat + econ_hard + sex + age, data = jobs)
+outcome_model <- lm(depress2 ~ treat + job_seek + econ_hard + sex + age, data = jobs)
+res_mediation <- mediate(mediator_model, outcome_model, boot = FALSE, sims = 1000, treat = "treat", mediator = "job_seek")
+
+
+
+summary(res_mediation)
+
+plot(res_mediation)
+```
+
+```{r}
+summary(b)
+
+summary(c)
+
+```
+
+```{r}
+g1 <- coef(outcome_model)["treat"] # direct effect
+
+g1_v <- rnorm(1000, mean = g1, sd = 0.0435)
+
+g2 <- coef(outcome_model)["job_seek"] # coefficient of mediator
+g2_v <- rnorm(1000, mean = g2, sd = 0.02824)
+
+d1 <- coef(mediator_model)["treat"]
+d1_v <- rnorm(1000, mean = d1, sd = 0.05147)
+
+percent_mediated <- ((g2*d1)/(g1 + g2*d1))*100
+percent_mediated_v <- ((g2_v*d1_v)/(g1_v + g2_v*d1_v))*100
+
+quantile(percent_mediated_v, c(.025, .975))
+
+percent_mediated
+summary(outcome_model)
+summary(mediator_model)
+res_t <- tidy(contcont, conf.int = TRUE)
+
+
+
+```
+
+
+

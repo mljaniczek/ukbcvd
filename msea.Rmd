@@ -20,6 +20,7 @@ library(fgsea)
 library(ggplot2)
 library(tidyr)
 library(dplyr)
+library(purrr)
 ```
 
 ```{r}
@@ -56,34 +57,80 @@ met_key$pathway[is.na(met_key$pathway)] <- "Other"
 # make list of mets per met group
 test <- split(met_key$col.name,met_key$pathway)
 
-res81 <- read.csv("validated_unique_mets_81_details.csv")
+# res81 <- read.csv("validated_unique_mets_81_details.csv")
+# 
+# res812 <- read.csv("results_mod1_bothphases.csv") %>%
+#   #filter(metabolite %in% res81$metabolite) %>%
+#   arrange(estimate)
 
-res812 <- read.csv("results_mod1_bothphases.csv") %>%
-  #filter(metabolite %in% res81$metabolite) %>%
-  arrange(estimate)
+#load("results_mod2_bothphases.Rdata")
 
-load("results_mod2_bothphases.Rdata")
+load("m1_msea_mod.Rdata")
+load("m2_msea_mod.Rdata")
 ```
 
 # MSEA Age Category <50
 
-## M1 P1
+## M1
 
-Using estimates from Phase 1 M1 age <50
+Using estimates from M1 age <50 (both phases)
 
 ```{r}
 
 
-ranks_lt50 <- res812 %>% 
-   filter(age_cat == "<50" & phase == "Phase I")  %>%
+ranks_lt50_m1 <- all_strat_M1_msea %>% 
+   filter(age_cat == "<50")  %>%
    pull(estimate)
 
-names(ranks_lt50) <- res812 %>% filter(age_cat == "<50" & phase == "Phase I") %>% pull(metabolite)
+names(ranks_lt50_m1) <- all_strat_M1_msea %>% filter(age_cat == "<50") %>% pull(metabolite)
 
-fgsea_res_p1_lt50 <- fgsea(
+fgsea_res_m1_lt50 <- fgsea(
   pathways = test,
-  stats = ranks_lt50
-)
+  stats = ranks_lt50_m1
+) %>%
+  mutate(age_cat = "<50",
+         model = "M1")
+
+head(fgsea_res_p1_lt50)
+
+topPathwaysUp <- fgsea_res_p1_lt50 %>%
+  filter(ES >0) %>%
+  arrange(pval) %>%
+  pull(pathway)
+  
+
+topPathwaysDown <- fgsea_res_p1_lt50 %>%
+  filter(ES <0) %>%
+  arrange(pval) %>%
+  pull(pathway)
+
+topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
+
+plotGseaTable(test[topPathways], ranks_lt50, fgsea_res_p1_lt50, gseaParam = 0.5)
+```
+
+
+
+
+## M2
+
+Using estimates from M2 age <50
+
+```{r}
+
+
+ranks_lt50_m2 <- all_strat_M2_msea %>% 
+   filter(age_cat == "<50")  %>%
+   pull(estimate)
+
+names(ranks_lt50_m2) <- all_strat_M2_msea %>% filter(age_cat == "<50") %>% pull(metabolite)
+
+fgsea_res_m2_lt50 <- fgsea(
+  pathways = test,
+  stats = ranks_lt50_m2
+) %>%
+  mutate(age_cat = "<50",
+         model = "M2")
 
 head(fgsea_res_p1_lt50)
 
@@ -105,140 +152,29 @@ topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
 plotGseaTable(test[topPathways], ranks_lt50, fgsea_res_p1_lt50, gseaParam = 0.5)
 ```
 
-## M2 P1
-
-Using estimates from Phase 1 M2 age <50
-
-```{r}
-
-
-ranks_lt50 <- all_strat_both_phases_long_m2 %>% 
-   filter(age_cat == "<50" & phase == "Phase I")  %>%
-   pull(estimate)
-
-names(ranks_lt50) <- all_strat_both_phases_long_m2 %>% filter(age_cat == "<50" & phase == "Phase I") %>% pull(metabolite)
-
-fgsea_res_p1_lt50 <- fgsea(
-  pathways = test,
-  stats = ranks_lt50
-)
-
-head(fgsea_res_p1_lt50)
-
-plotEnrichment(test[["Large HDL (average diameter 12.1 nm)"]],ranks_lt50)
-
-topPathwaysUp <- fgsea_res_p1_lt50 %>%
-  filter(ES >0) %>%
-  arrange(pval) %>%
-  pull(pathway)
-  
-
-topPathwaysDown <- fgsea_res_p1_lt50 %>%
-  filter(ES <0) %>%
-  arrange(pval) %>%
-  pull(pathway)
-
-topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
-
-plotGseaTable(test[topPathways], ranks_lt50, fgsea_res_p1_lt50, gseaParam = 0.5)
-```
-
-## M1 P1
-
-Using estimates from Phase 1 M1 age <50
-
-```{r}
-
-
-ranks_lt50 <- res812 %>% 
-   filter(age_cat == "<50" & phase == "Phase II")  %>%
-   pull(estimate)
-
-names(ranks_lt50) <- res812 %>% filter(age_cat == "<50" & phase == "Phase II") %>% pull(metabolite)
-
-fgsea_res_p1_lt50 <- fgsea(
-  pathways = test,
-  stats = ranks_lt50
-)
-
-head(fgsea_res_p1_lt50)
-
-plotEnrichment(test[["Large HDL (average diameter 12.1 nm)"]],ranks_lt50)
-
-topPathwaysUp <- fgsea_res_p1_lt50 %>%
-  filter(ES >0) %>%
-  arrange(pval) %>%
-  pull(pathway)
-  
-
-topPathwaysDown <- fgsea_res_p1_lt50 %>%
-  filter(ES <0) %>%
-  arrange(pval) %>%
-  pull(pathway)
-
-topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
-
-plotGseaTable(test[topPathways], ranks_lt50, fgsea_res_p1_lt50, gseaParam = 0.5)
-```
-
-## M2 P2
-
-Using estimates from Phase 2 M2 age <50
-
-```{r}
-
-
-ranks_lt50 <- all_strat_both_phases_long_m2 %>% 
-   filter(age_cat == "<50" & phase == "Phase II")  %>%
-   pull(estimate)
-
-names(ranks_lt50) <- all_strat_both_phases_long_m2 %>% filter(age_cat == "<50" & phase == "Phase II") %>% pull(metabolite)
-
-fgsea_res_p1_lt50 <- fgsea(
-  pathways = test,
-  stats = ranks_lt50
-)
-
-head(fgsea_res_p1_lt50)
-
-plotEnrichment(test[["Large HDL (average diameter 12.1 nm)"]],ranks_lt50)
-
-topPathwaysUp <- fgsea_res_p1_lt50 %>%
-  filter(ES >0) %>%
-  arrange(pval) %>%
-  pull(pathway)
-  
-
-topPathwaysDown <- fgsea_res_p1_lt50 %>%
-  filter(ES <0) %>%
-  arrange(pval) %>%
-  pull(pathway)
-
-topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
-
-plotGseaTable(test[topPathways], ranks_lt50, fgsea_res_p1_lt50, gseaParam = 0.5)
-```
 
 
 # MSEA Age Category 50-59
 
-## M1 P1
+## M1
 
-Using estimates from Phase 1 M1 age 50-59
+Using estimates from M1 age 50-59
 
 ```{r}
 
 
-ranks_lt50 <- res812 %>% 
-   filter(age_cat == "50-59" & phase == "Phase I")  %>%
+ranks_lt59_m1 <- all_strat_M1_msea %>% 
+   filter(age_cat == "50-59")  %>%
    pull(estimate)
 
-names(ranks_lt50) <- res812 %>% filter(age_cat == "50-59" & phase == "Phase I") %>% pull(metabolite)
+names(ranks_lt59_m1) <- all_strat_M1_msea %>% filter(age_cat == "50-59") %>% pull(metabolite)
 
-fgsea_res_p1_lt50 <- fgsea(
+fgsea_res_m1_lt59 <- fgsea(
   pathways = test,
-  stats = ranks_lt50
-)
+  stats = ranks_lt59_m1
+) %>%
+  mutate(age_cat = "50-59",
+         model = "M1")
 
 head(fgsea_res_p1_lt50)
 
@@ -260,23 +196,25 @@ topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
 plotGseaTable(test[topPathways], ranks_lt50, fgsea_res_p1_lt50, gseaParam = 0.5)
 ```
 
-## M2 P1
+## M2
 
-Using estimates from Phase 1 M2 age 50-59
+Using estimates from M2 age 50-59
 
 ```{r}
 
 
-ranks_lt50 <- all_strat_both_phases_long_m2 %>% 
-   filter(age_cat == "50-59" & phase == "Phase I")  %>%
+ranks_lt59_m2 <- all_strat_M2_msea %>% 
+   filter(age_cat == "50-59")  %>%
    pull(estimate)
 
-names(ranks_lt50) <- all_strat_both_phases_long_m2 %>% filter(age_cat == "50-59" & phase == "Phase I") %>% pull(metabolite)
+names(ranks_lt59_m2) <- all_strat_M2_msea %>% filter(age_cat == "50-59") %>% pull(metabolite)
 
-fgsea_res_p1_lt50 <- fgsea(
+fgsea_res_m2_lt59 <- fgsea(
   pathways = test,
-  stats = ranks_lt50
-)
+  stats = ranks_lt59_m2
+) %>%
+  mutate(age_cat = "50-59",
+         model = "M2")
 
 head(fgsea_res_p1_lt50)
 
@@ -298,101 +236,30 @@ topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
 plotGseaTable(test[topPathways], ranks_lt50, fgsea_res_p1_lt50, gseaParam = 0.5)
 ```
 
-## M1 P1
-
-Using estimates from Phase 1 M1 age 50-59
-
-```{r}
 
 
-ranks_lt50 <- res812 %>% 
-   filter(age_cat == "50-59" & phase == "Phase II")  %>%
-   pull(estimate)
-
-names(ranks_lt50) <- res812 %>% filter(age_cat == "50-59" & phase == "Phase II") %>% pull(metabolite)
-
-fgsea_res_p1_lt50 <- fgsea(
-  pathways = test,
-  stats = ranks_lt50
-)
-
-head(fgsea_res_p1_lt50)
-
-plotEnrichment(test[["Large HDL (average diameter 12.1 nm)"]],ranks_lt50)
-
-topPathwaysUp <- fgsea_res_p1_lt50 %>%
-  filter(ES >0) %>%
-  arrange(pval) %>%
-  pull(pathway)
-  
-
-topPathwaysDown <- fgsea_res_p1_lt50 %>%
-  filter(ES <0) %>%
-  arrange(pval) %>%
-  pull(pathway)
-
-topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
-
-plotGseaTable(test[topPathways], ranks_lt50, fgsea_res_p1_lt50, gseaParam = 0.5)
-```
-
-## M2 P2
-
-Using estimates from Phase 2 M2 age 50-59
-
-```{r}
-
-
-ranks_lt50 <- all_strat_both_phases_long_m2 %>% 
-   filter(age_cat == "50-59" & phase == "Phase II")  %>%
-   pull(estimate)
-
-names(ranks_lt50) <- all_strat_both_phases_long_m2 %>% filter(age_cat == "50-59" & phase == "Phase II") %>% pull(metabolite)
-
-fgsea_res_p1_lt50 <- fgsea(
-  pathways = test,
-  stats = ranks_lt50
-)
-
-head(fgsea_res_p1_lt50)
-
-plotEnrichment(test[["Large HDL (average diameter 12.1 nm)"]],ranks_lt50)
-
-topPathwaysUp <- fgsea_res_p1_lt50 %>%
-  filter(ES >0) %>%
-  arrange(pval) %>%
-  pull(pathway)
-  
-
-topPathwaysDown <- fgsea_res_p1_lt50 %>%
-  filter(ES <0) %>%
-  arrange(pval) %>%
-  pull(pathway)
-
-topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
-
-plotGseaTable(test[topPathways], ranks_lt50, fgsea_res_p1_lt50, gseaParam = 0.5)
-```
 
 # MSEA Age Category 60-69
 
-## M1 P1
+## M1
 
-Using estimates from Phase 1 M1 age 60-69
+Using estimates from M1 age 60-69
 
 ```{r}
 
 
-ranks_lt50 <- res812 %>% 
-   filter(age_cat == "60-69" & phase == "Phase I")  %>%
+ranks_lt69_m1 <- all_strat_M1_msea %>% 
+   filter(age_cat == "60-69")  %>%
    pull(estimate)
 
-names(ranks_lt50) <- res812 %>% filter(age_cat == "60-69" & phase == "Phase I") %>% pull(metabolite)
+names(ranks_lt69_m1) <- all_strat_M1_msea %>% filter(age_cat == "60-69") %>% pull(metabolite)
 
-fgsea_res_p1_lt50 <- fgsea(
+fgsea_res_m1_lt69 <- fgsea(
   pathways = test,
-  stats = ranks_lt50
-)
+  stats = ranks_lt69_m1
+) %>%
+  mutate(age_cat = "60-69",
+         model = "M1")
 
 head(fgsea_res_p1_lt50)
 
@@ -414,23 +281,25 @@ topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
 plotGseaTable(test[topPathways], ranks_lt50, fgsea_res_p1_lt50, gseaParam = 0.5)
 ```
 
-## M2 P1
+## M2
 
-Using estimates from Phase 1 M2 age 60-69
+Using estimates from M2 age 60-69
 
 ```{r}
 
 
-ranks_lt50 <- all_strat_both_phases_long_m2 %>% 
-   filter(age_cat == "60-69" & phase == "Phase I")  %>%
+ranks_lt59_m2 <- all_strat_M2_msea %>% 
+   filter(age_cat == "60-69")  %>%
    pull(estimate)
 
-names(ranks_lt50) <- all_strat_both_phases_long_m2 %>% filter(age_cat == "60-69" & phase == "Phase I") %>% pull(metabolite)
+names(ranks_lt59_m2) <- all_strat_M2_msea %>% filter(age_cat == "60-69") %>% pull(metabolite)
 
-fgsea_res_p1_lt50 <- fgsea(
+fgsea_res_m2_lt69 <- fgsea(
   pathways = test,
-  stats = ranks_lt50
-)
+  stats = ranks_lt59_m2
+) %>%
+  mutate(age_cat = "60-69",
+         model = "M2")
 
 head(fgsea_res_p1_lt50)
 
@@ -452,100 +321,28 @@ topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
 plotGseaTable(test[topPathways], ranks_lt50, fgsea_res_p1_lt50, gseaParam = 0.5)
 ```
 
-## M1 P1
-
-Using estimates from Phase 1 M1 age 60-69
-
-```{r}
-
-
-ranks_lt50 <- res812 %>% 
-   filter(age_cat == "60-69" & phase == "Phase II")  %>%
-   pull(estimate)
-
-names(ranks_lt50) <- res812 %>% filter(age_cat == "60-69" & phase == "Phase II") %>% pull(metabolite)
-
-fgsea_res_p1_lt50 <- fgsea(
-  pathways = test,
-  stats = ranks_lt50
-)
-
-head(fgsea_res_p1_lt50)
-
-plotEnrichment(test[["Large HDL (average diameter 12.1 nm)"]],ranks_lt50)
-
-topPathwaysUp <- fgsea_res_p1_lt50 %>%
-  filter(ES >0) %>%
-  arrange(pval) %>%
-  pull(pathway)
-  
-
-topPathwaysDown <- fgsea_res_p1_lt50 %>%
-  filter(ES <0) %>%
-  arrange(pval) %>%
-  pull(pathway)
-
-topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
-
-plotGseaTable(test[topPathways], ranks_lt50, fgsea_res_p1_lt50, gseaParam = 0.5)
-```
-
-## M2 P2
-
-Using estimates from Phase 2 M2 age 60-69
-
-```{r}
-
-
-ranks_lt50 <- all_strat_both_phases_long_m2 %>% 
-   filter(age_cat == "60-69" & phase == "Phase II")  %>%
-   pull(estimate)
-
-names(ranks_lt50) <- all_strat_both_phases_long_m2 %>% filter(age_cat == "60-69" & phase == "Phase II") %>% pull(metabolite)
-
-fgsea_res_p1_lt50 <- fgsea(
-  pathways = test,
-  stats = ranks_lt50
-)
-
-head(fgsea_res_p1_lt50)
-
-plotEnrichment(test[["Large HDL (average diameter 12.1 nm)"]],ranks_lt50)
-
-topPathwaysUp <- fgsea_res_p1_lt50 %>%
-  filter(ES >0) %>%
-  arrange(pval) %>%
-  pull(pathway)
-  
-
-topPathwaysDown <- fgsea_res_p1_lt50 %>%
-  filter(ES <0) %>%
-  arrange(pval) %>%
-  pull(pathway)
-
-topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
-
-plotGseaTable(test[topPathways], ranks_lt50, fgsea_res_p1_lt50, gseaParam = 0.5)
-```
 
 # MSEA Age Category 70-85
-## M1 P1
 
-Using estimates from Phase 1 M1 age 70-85
+## M1 
+
+Using estimates from M1 age 70-85
 
 ```{r}
 
 
-ranks_lt50 <- res812 %>% 
-   filter(age_cat == "70-85" & phase == "Phase I")  %>%
+ranks_lt85_m1 <- all_strat_M1_msea %>% 
+   filter(age_cat == "70-85")  %>%
    pull(estimate)
 
-names(ranks_lt50) <- res812 %>% filter(age_cat == "70-85" & phase == "Phase I") %>% pull(metabolite)
+names(ranks_lt85_m1) <- all_strat_M1_msea %>% filter(age_cat == "70-85") %>% pull(metabolite)
 
-fgsea_res_p1_lt50 <- fgsea(
+fgsea_res_m1_lt85 <- fgsea(
   pathways = test,
-  stats = ranks_lt50
-)
+  stats = ranks_lt85_m1
+) %>%
+  mutate(age_cat = "70-85",
+         model = "M1")
 
 head(fgsea_res_p1_lt50)
 
@@ -567,23 +364,25 @@ topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
 plotGseaTable(test[topPathways], ranks_lt50, fgsea_res_p1_lt50, gseaParam = 0.5)
 ```
 
-## M2 P1
+## M2
 
-Using estimates from Phase 1 M2 age 70-85
+Using estimates from M2 age 70-85
 
 ```{r}
 
 
-ranks_lt50 <- all_strat_both_phases_long_m2 %>% 
-   filter(age_cat == "70-85" & phase == "Phase I")  %>%
+ranks_lt85_m2 <- all_strat_M2_msea %>% 
+   filter(age_cat == "70-85")  %>%
    pull(estimate)
 
-names(ranks_lt50) <- all_strat_both_phases_long_m2 %>% filter(age_cat == "70-85" & phase == "Phase I") %>% pull(metabolite)
+names(ranks_lt85_m2) <- all_strat_M2_msea %>% filter(age_cat == "70-85") %>% pull(metabolite)
 
-fgsea_res_p1_lt50 <- fgsea(
+fgsea_res_m2_lt85 <- fgsea(
   pathways = test,
-  stats = ranks_lt50
-)
+  stats = ranks_lt85_m2
+) %>%
+  mutate(age_cat = "70-85",
+         model = "M2")
 
 head(fgsea_res_p1_lt50)
 
@@ -605,80 +404,54 @@ topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
 plotGseaTable(test[topPathways], ranks_lt50, fgsea_res_p1_lt50, gseaParam = 0.5)
 ```
 
-## M1 P1
-
-Using estimates from Phase 1 M1 age 70-85
 
 ```{r}
-
-
-ranks_lt50 <- res812 %>% 
-   filter(age_cat == "70-85" & phase == "Phase II")  %>%
-   pull(estimate)
-
-names(ranks_lt50) <- res812 %>% filter(age_cat == "70-85" & phase == "Phase II") %>% pull(metabolite)
-
-fgsea_res_p1_lt50 <- fgsea(
-  pathways = test,
-  stats = ranks_lt50
-)
-
-head(fgsea_res_p1_lt50)
-
-plotEnrichment(test[["Large HDL (average diameter 12.1 nm)"]],ranks_lt50)
-
-topPathwaysUp <- fgsea_res_p1_lt50 %>%
-  filter(ES >0) %>%
-  arrange(pval) %>%
-  pull(pathway)
-  
-
-topPathwaysDown <- fgsea_res_p1_lt50 %>%
-  filter(ES <0) %>%
-  arrange(pval) %>%
-  pull(pathway)
-
-topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
-
-plotGseaTable(test[topPathways], ranks_lt50, fgsea_res_p1_lt50, gseaParam = 0.5)
+all_msea_res <- bind_rows(list(fgsea_res_m1_lt50, fgsea_res_m1_lt59, fgsea_res_m1_lt69, fgsea_res_m1_lt85, fgsea_res_m2_lt50, fgsea_res_m2_lt59, fgsea_res_m2_lt69, fgsea_res_m2_lt85))
 ```
-
-## M2 P2
-
-Using estimates from Phase 2 M2 age 70-85
 
 ```{r}
+# forest for msea 
 
+# trying loop to get plot for all the subgroups
 
-ranks_lt50 <- all_strat_both_phases_long_m2 %>% 
-   filter(age_cat == "70-85" & phase == "Phase II")  %>%
-   pull(estimate)
+met_cats <- unique(all_msea_res$pathway)
 
-names(ranks_lt50) <- all_strat_both_phases_long_m2 %>% filter(age_cat == "70-85" & phase == "Phase II") %>% pull(metabolite)
+models <- unique(all_msea_res$model)
 
-fgsea_res_p1_lt50 <- fgsea(
-  pathways = test,
-  stats = ranks_lt50
-)
+map_res <- data.frame(
+  models = models) %>%
+  mutate(data = map(models, ~ all_msea_res %>% 
+                      filter(model == .x)%>%
+                      arrange(NES) %>%
+                      complete(age_cat,pathway,
+                               fill = list(NES = 0))))
+library(forcats)
 
-head(fgsea_res_p1_lt50)
+map2(.x = map_res$data, .y = models, 
+                        ~ggplot(.x,
+       aes(x = pathway, y = NES, col = age_cat, fill = age_cat)) +
+        geom_col(position = "dodge") +
+        coord_flip() +
+        theme_minimal() +
+        theme() +
+        ggtitle(.y))
 
-plotEnrichment(test[["Large HDL (average diameter 12.1 nm)"]],ranks_lt50)
+test <- all_msea_res %>%
+ # arrange(NES) %>%
+  #filter(padj <0.05)%>%
+                      complete(age_cat,pathway,model,
+                               fill = list(NES = 0)) %>%
+  mutate(pathways = fct_relevel(pathway, topPathways)) %>%
+  mutate(significant = ifelse(padj <0.05, 1, 0))
 
-topPathwaysUp <- fgsea_res_p1_lt50 %>%
-  filter(ES >0) %>%
-  arrange(pval) %>%
-  pull(pathway)
-  
-
-topPathwaysDown <- fgsea_res_p1_lt50 %>%
-  filter(ES <0) %>%
-  arrange(pval) %>%
-  pull(pathway)
-
-topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
-
-plotGseaTable(test[topPathways], ranks_lt50, fgsea_res_p1_lt50, gseaParam = 0.5)
+ggplot(test,
+       aes(x = pathways, y = NES, col = age_cat, fill = age_cat)) +
+        geom_col(position = "dodge") +
+        geom_text(aes(label = ifelse(significant, "*", ""), group = age_cat), 
+            position = position_dodge(width = .9), size = 20 / .pt)+
+        coord_flip() +
+        theme_minimal() +
+        theme() +
+        facet_grid(~model)
 ```
-
 
