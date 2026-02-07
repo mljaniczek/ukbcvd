@@ -1,7 +1,7 @@
 ---
 title: "MSEA"
 author: "Margaret Janiczek"
-date: "2024-01-03"
+date: "2025-01-29"
 output:
   html_document:
     df_print: paged
@@ -23,17 +23,7 @@ library(dplyr)
 library(purrr)
 ```
 
-```{r}
-# example
-data(examplePathways)
-data(exampleRanks)
-set.seed(42)
 
-fgseaRes <- fgsea(pathways = examplePathways,
-                  stats = exampleRanks,
-                  minSize = 15,
-                  maxSize = 500)
-```
 
 ```{r}
 #now load metabolite group info
@@ -52,10 +42,17 @@ met_key <- ukb_key_metab %>%
     Group == "Lipoprotein subclasses", Subgroup,Group
   ))
 
-met_key$pathway[is.na(met_key$pathway)] <- "Other"
+#met_key$pathway[is.na(met_key$pathway)] <- "Other"
 
 # make list of mets per met group
-test <- split(met_key$col.name,met_key$pathway)
+
+met_key_select <- met_key %>%
+  filter(!(pathway %in% c("Ratios","Lipoprotein particle sizes", 
+           "Apolipoproteins", "Fluid balance", "Inflammation"))) %>%
+  mutate(pathway = as.factor(str_split_i(pathway, '\\(', 1))) %>%
+  mutate(pathway = fct_relevel(pathway, "Chylomicrons and extremely large VLDL ", "Very large VLDL ", "Large VLDL ", "Medium VLDL ", "Small VLDL ", "Very small VLDL ", "Amino acids", "Ketone bodies", "Triglycerides", "Small LDL", "Medium LDL", "Large LDL", "Total lipids", "Phospholipids", "Glycolysis related metabolites", "Cholesteryl esters", "Lipoprotein particle concentrations", "Cholesterol", "Fatty acids", "Free cholesterol", "IDL ", "Other lipids", "Small HDL ", "Medium HDL ", "Large HDL ", "Very large HDL "))
+
+met_list <- split(met_key_select$col.name,met_key_select$pathway)
 
 # res81 <- read.csv("validated_unique_mets_81_details.csv")
 # 
@@ -410,66 +407,71 @@ plotGseaTable(test[topPathways], ranks_lt50, fgsea_res_p1_lt50, gseaParam = 0.5)
 Using estimates from M3
 
 ```{r}
+all_strat_select <- all_strat_both_phases_long_m3 %>%
+  filter(metabolite %in% met_key_select$col.name)
 
-ranks_lt50_m3 <- all_strat_M3_msea %>% 
+ranks_lt50_m3 <- all_strat_both_phases_long_m3 %>% 
+  filter(phase == "Phase I") %>%
    filter(age_cat == "<50")  %>%
    pull(estimate)
 
-names(ranks_lt50_m3) <- all_strat_M3_msea %>% filter(age_cat == "<50") %>% pull(metabolite)
+names(ranks_lt50_m3) <- all_strat_select %>% 
+  filter(phase == "Phase I") %>% filter(age_cat == "<50") %>% pull(metabolite)
 
 fgsea_res_m3_lt50 <- fgsea(
-  pathways = test,
+  pathways = met_list,
   stats = ranks_lt50_m3
 ) %>%
   mutate(age_cat = "<50",
          model = "M3")
 
-ranks_lt59_m3 <- all_strat_M3_msea %>% 
+ranks_lt59_m3 <- all_strat_select %>% 
+  filter(phase == "Phase I") %>%
    filter(age_cat == "50-59")  %>%
    pull(estimate)
 
-names(ranks_lt59_m3) <- all_strat_M3_msea %>% filter(age_cat == "50-59") %>% pull(metabolite)
+names(ranks_lt59_m3) <- all_strat_select %>% 
+  filter(phase == "Phase I") %>% filter(age_cat == "50-59") %>% pull(metabolite)
 
 fgsea_res_m3_lt59 <- fgsea(
-  pathways = test,
+  pathways = met_list,
   stats = ranks_lt59_m3
 ) %>%
   mutate(age_cat = "50-59",
          model = "M3")
 
-ranks_lt69_m3 <- all_strat_M3_msea %>% 
-   filter(age_cat == "60-69")  %>%
+ranks_lt69_m3 <- all_strat_select %>% 
+  filter(phase == "Phase I") %>% 
+   filter(age_cat == "60+")  %>%
    pull(estimate)
 
-names(ranks_lt69_m3) <- all_strat_M3_msea %>% filter(age_cat == "60-69") %>% pull(metabolite)
+names(ranks_lt69_m3) <- all_strat_select %>% 
+  filter(phase == "Phase I") %>% filter(age_cat == "60+") %>% pull(metabolite)
 
 fgsea_res_m3_lt69 <- fgsea(
-  pathways = test,
+  pathways = met_list,
   stats = ranks_lt69_m3
 ) %>%
-  mutate(age_cat = "60-69",
+  mutate(age_cat = "60+",
          model = "M3")
 
+topPathwaysUp <- fgsea_res_m3_lt59 %>%
+  filter(ES >0) %>%
+  arrange(pval) %>%
+  pull(pathway)
+  
 
-ranks_lt85_m3 <- all_strat_M3_msea %>% 
-   filter(age_cat == "70-85")  %>%
-   pull(estimate)
+topPathwaysDown <- fgsea_res_m3_lt59 %>%
+  filter(ES <0) %>%
+  arrange(pval) %>%
+  pull(pathway)
 
-names(ranks_lt85_m3) <- all_strat_M3_msea %>% filter(age_cat == "70-85") %>% pull(metabolite)
-
-fgsea_res_m3_lt85 <- fgsea(
-  pathways = test,
-  stats = ranks_lt85_m3
-) %>%
-  mutate(age_cat = "70-85",
-         model = "M3")
-
-
+topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
 ```
 
 
 ```{r}
-all_msea_res <- bind_rows(list(fgsea_res_m1_lt50, fgsea_res_m1_lt59, fgsea_res_m1_lt69, fgsea_res_m1_lt85, fgsea_res_m2_lt50, fgsea_res_m2_lt59, fgsea_res_m2_lt69, fgsea_res_m2_lt85,fgsea_res_m3_lt50, fgsea_res_m3_lt59, fgsea_res_m3_lt69, fgsea_res_m3_lt85))
+all_msea_res <- bind_rows(list(fgsea_res_m3_lt50, fgsea_res_m3_lt59, fgsea_res_m3_lt69))
 ```
 
 ```{r}
@@ -499,15 +501,15 @@ map2(.x = map_res$data, .y = models,
         theme() +
         ggtitle(.y))
 
-test <- all_msea_res %>%
+res_fig <- all_msea_res %>%
  # arrange(NES) %>%
   #filter(padj <0.05)%>%
                       complete(age_cat,pathway,model,
                                fill = list(NES = 0)) %>%
-  mutate(pathways = fct_relevel(pathway, topPathways)) %>%
+  mutate(pathways = fct_relevel(pathway, "Chylomicrons and extremely large VLDL ", "Very large VLDL ", "Large VLDL ", "Medium VLDL ", "Small VLDL ", "Very small VLDL ", "Amino acids", "Ketone bodies", "Triglycerides", "Small LDL ", "Medium LDL ", "Large LDL ", "Total lipids", "Phospholipids", "Glycolysis related metabolites", "Cholesteryl esters", "Lipoprotein particle concentrations", "Cholesterol", "Fatty acids", "Free cholesterol", "IDL ", "Other lipids", "Small HDL ", "Medium HDL ", "Large HDL ", "Very large HDL "))%>%
   mutate(significant = ifelse(padj <0.05, 1, 0))
 
-ggplot(test,
+ggplot(res_fig,
        aes(x = pathways, y = NES, col = age_cat, fill = age_cat)) +
         geom_col(position = "dodge") +
         geom_text(aes(label = ifelse(significant, "*", ""), group = age_cat), color = "black", 

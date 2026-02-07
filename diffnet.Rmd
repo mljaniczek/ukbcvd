@@ -1,0 +1,547 @@
+---
+title: "Gaussian Graphical Models in Metabolomics - Part 2"
+author: Raji Balasubramanian (UMass-Amherst) and Denise Scholtens (Northwestern Feinberg
+  School of Medicine)
+date: "Monday March 15, 2021"
+output:
+  beamer_presentation:
+    fig_caption: no
+    fig_height: 4.5
+    fig_width: 4.5
+    includes:
+      in_header: header.tex
+    keep_tex: yes
+    toc: yes
+  slidy_presentation: default
+slide_level: 3
+---
+
+```{r setup, include=FALSE}
+# install.packages("iDINGO")
+# install.packages("ggplot2")
+```
+
+
+### Beyond simple networks
+- Graphical lasso identifies conditional dependence between pairs of metabolites and applies a node-and-edge graph representation of these dependencies
+- While estimating conditional dependencies among metabolite pairs is interesting, for most investigations, these dependencies are not of primary interest.
+\vspace{2ex}
+- More complex questions:
+\begin{itemize}
+  \item Which subnetworks are associated with a phenotype? 
+  \item Do networks vary across groups? 
+\end{itemize}
+
+# 1) Subnetworks associated with phenotype
+
+### Subnetworks associated with phenotype
+- Prior to network analyses, investigators often perform per-metabolite association analyses with a phenotype of interest
+- How can per-metabolite and network analyses be linked?
+- Some existing approaches:
+\begin{itemize} 
+\item Dittrich et al. (2008) \textit{Bioinformatics}. Identifying functional modules in protein–protein interaction networks: an integrated exact approach.
+\item Ben-Hamo et al. (2014) \textit{Bioinformatics}. PhenoNet: identification of key networks associated with disease phenotype.
+\item Soul et al. (2015) \textit{Scientific Reports}. PhenomeExpress: A refined network analysis of expression datasets by inclusion of known disease phenotypes.
+\end{itemize}
+
+### Subnetworks associated with phenotype
+- A simple approach using graphical lasso
+\vspace{2ex}
+\begin{itemize} 
+\item Identify a set of metabolites, $\mathcal{M}_p$, associated with phenotype
+\item Identify additional metabolites, $\mathcal{M}_c$, with Pearson correlation exceeding some threshold (say 0.25) with at least one member of $\mathcal{M}_p$
+\item Run graphical lasso on $\mathcal{M}_p \cup \mathcal{M}_c$
+\end{itemize}
+
+### Ancestry-specific networks assoc with fpg
+
+In case you'd like to start a new R session, let's reload the libraries and set the working directory.
+\footnotesize   
+```{r preliminaries - slide 7, message = FALSE, eval=TRUE}
+
+library(igraph)
+library(ggplot2)
+library(iDINGO)
+library(huge)
+```
+\normalsize 
+
+### Ancestry-specific networks assoc with fpg
+
+Now read in the data and review some simple descriptors.
+\footnotesize   
+```{r descriptive - slide 8, message = TRUE, eval=TRUE}
+mydat <- read.csv("hapo_metabolomics_2020.csv")
+rownames(mydat) <- mydat$id
+dim(mydat)
+head(colnames(mydat))
+table(mydat$anc_gp)
+```
+\normalsize  
+
+### Ancestry-specific networks assoc with fpg
+Perform simple ancestry-group specific mean imputation of missing metabolite values.
+\footnotesize   
+```{r imputation - slide 9, message = TRUE, eval=TRUE}
+hapo_ag <- split(mydat,f=mydat$anc_gp)
+length(hapo_ag)
+sapply(hapo_ag,FUN=dim)
+
+hapo_ag_m_i <- lapply(hapo_ag, 
+		FUN=function(x) apply(x[,grep("mt",colnames(x),value=TRUE)],
+		MARGIN=2,
+		FUN=function(y) ifelse(is.na(y),mean(y,na.rm=TRUE),y)))
+
+```
+\normalsize  
+
+### Ancestry-specific networks assoc with fpg
+Check to make sure imputation worked as planned.
+\footnotesize   
+```{r imputation check - slide 10, message = TRUE, eval=TRUE}
+hapo_m_i <- do.call("rbind",hapo_ag_m_i)
+hapo_i <- data.frame(mydat[rownames(hapo_m_i),c("id","anc_gp","fpg")],
+                     hapo_m_i)
+tapply(mydat[,"mt3_4"],INDEX=mydat$anc_gp,FUN=mean,na.rm=TRUE)
+tapply(mydat[,"mt3_12"],INDEX=mydat$anc_gp,FUN=mean,na.rm=TRUE)
+```
+\normalsize  
+
+### Ancestry-specific networks assoc with fpg
+Check to make sure imputation worked as planned.
+\footnotesize   
+```{r imputation check - slide 11, message = TRUE, eval=TRUE}
+mydat[c(1,2,3,6),c("anc_gp","mt3_4","mt3_12")]
+hapo_i[rownames(mydat)[c(1,2,3,6)],c("anc_gp","mt3_4","mt3_12")]
+```
+\normalsize 
+
+### Ancestry-specific networks assoc with fpg
+Find subset of metabolites within each ancestry associated with fpg.
+\footnotesize   
+```{r fpg - slide 12, message = FALSE, eval=TRUE}
+myfun <- function(metabolite,outcome){
+	mymod <- lm(outcome~metabolite)
+	minuslogp <- -log(summary(mymod)$coef[2,4])
+	return(minuslogp)
+}
+
+hapo_i_ag <- split(hapo_i,f=hapo_i$anc_gp)
+
+m_fpg_p_ag <- lapply(hapo_i_ag,
+			FUN=function(x){
+				x_m <- x[,grep("mt",colnames(x))]
+				ans <- apply(x_m,MARGIN=2,FUN=myfun,outcome=x$fpg)
+				return(ans)
+				})
+```
+\normalsize 
+
+### Ancestry-specific networks assoc with fpg
+Find subset of metabolites within each ancestry associated with fpg.
+\tiny   
+```{r fpg - slide 13, message = TRUE, eval=TRUE}
+sig_m_ag <- lapply(m_fpg_p_ag,
+		FUN=function(x) names(x[which(x>-log(.05))]))
+sig_m_ag
+```
+\normalsize 
+
+### Ancestry-specific networks assoc with fpg
+Find other metabolites correlated with significant metabolites.
+\footnotesize   
+```{r correlated - slide 14, message = TRUE, eval=TRUE}
+m_cor_ag <- lapply(hapo_ag_m_i,FUN=cor,use="pairwise.complete.obs")
+sig_cor_ag <- vector("list",length=4)
+names(sig_cor_ag) <- names(sig_m_ag)
+for (i in 1:4){
+	sig_m_cor_pairs <- m_cor_ag[[i]][sig_m_ag[[i]],]
+	sig_m_cor <- names(which(colSums(abs(sig_m_cor_pairs)>=.25)>0))
+	sig_m_cor_vals <- hapo_ag_m_i[[i]][,sig_m_cor]
+	sig_m_cor_vals_s <- apply(sig_m_cor_vals,MARGIN=2,FUN=scale)
+	sig_cor_ag[[i]] <- sig_m_cor_vals_s
+}
+sapply(sig_cor_ag,FUN=dim)
+```
+\normalsize 
+
+### Ancestry-specific networks assoc with fpg
+Now apply graphical lasso for these subsets of metabolites.
+\footnotesize   
+```{r glasso - slide 15, message = TRUE, eval=TRUE}
+mbModel_ag <- lapply(sig_cor_ag,FUN=huge,method="mb")
+mb_opt_ag <- lapply(mbModel_ag,FUN=huge.select,criterion="ric")
+```
+
+\normalsize 
+
+### Ancestry-specific networks assoc with fpg
+Generate the igraph objects.
+\footnotesize   
+```{r glasso - slide 16, message = TRUE, eval=TRUE}
+ggm_ag_mat <- lapply(mb_opt_ag,FUN=function(x) x$refit)
+ggm_ag_g <-lapply(ggm_ag_mat,
+                  FUN=graph_from_adjacency_matrix,
+                  mode="undirected")
+
+for (i in 1:4){
+	V(ggm_ag_g[[i]])$label <- colnames(sig_cor_ag[[i]])
+}
+```
+\normalsize 
+
+
+### Ancestry-specific networks assoc with fpg
+Now plot the graphs - Ancestry group 1 (layout may vary)
+\footnotesize   
+```{r plot ag1 - slide 17, message = TRUE, eval=TRUE,fig.width=4,fig.height=4}
+plot(ggm_ag_g[["ag1"]],vertex.label=V(ggm_ag_g[["ag1"]])$label,
+     vertex.label.cex=.5)
+```
+\normalsize 
+
+### Ancestry-specific networks assoc with fpg
+Ancestry group 2
+\footnotesize   
+```{r plot ag2 - slide 18, message = TRUE, eval=TRUE,fig.width=4,fig.height=4}
+plot(ggm_ag_g[["ag2"]],vertex.label=V(ggm_ag_g[["ag2"]])$label,
+     vertex.label.cex=.5)
+```
+\normalsize 
+
+### Ancestry-specific networks assoc with fpg
+Ancestry group 3 - note the singleton node
+\footnotesize   
+```{r plot ag3 - slide 19, message = TRUE, eval=TRUE,fig.width=4,fig.height=4}
+plot(ggm_ag_g[["ag3"]],vertex.label=V(ggm_ag_g[["ag3"]])$label,
+     vertex.label.cex=.5)
+```
+\normalsize 
+
+### Ancestry-specific networks assoc with fpg
+Ancestry group 4 - note the singleton node
+\footnotesize   
+```{r plot ag4 - slide 20, message = TRUE, eval=TRUE,fig.width=4,fig.height=4}
+plot(ggm_ag_g[["ag4"]],vertex.label=V(ggm_ag_g[["ag4"]])$label,
+     vertex.label.cex=.5)
+```
+\normalsize 
+
+### Ancestry-specific networks assoc with fpg
+Drop the singletons.
+\footnotesize   
+```{r drop single - slide 21, message = TRUE, eval=TRUE,fig.width=3.5,fig.height=3.5}
+ggm_ag_g[[3]] <- delete_vertices(ggm_ag_g[[3]],
+                            which(V(ggm_ag_g[[3]])$label=="mt3_6"))
+ggm_ag_g[[4]] <- delete_vertices(ggm_ag_g[[4]],
+                            which(V(ggm_ag_g[[4]])$label=="mt3_12"))
+plot(ggm_ag_g[["ag4"]],vertex.label=V(ggm_ag_g[["ag4"]])$label,
+     vertex.label.cex=.5)
+```
+\normalsize 
+
+### Community detection
+- Visual inspection and biological interpretation of these networks is challenging
+- Pick out pairwise relationships?  Then what? 
+- Community detection helps tell a story
+- \textit{igraph} package
+\begin{itemize}
+\item cluster$\_$spinglass (Newman and Girvan, 2004)
+\item cluster$\_$fast$\_$greedy
+\item cluster$\_$label$\_$prop
+\item cluster$\_$walktrap
+\item etc.
+\end{itemize}
+
+### Community detection
+\footnotesize   
+Spinglass clustering on all four graphs
+```{r spinglass - slide 23, message = TRUE, eval=TRUE}
+ggm_ag_g_spg <- lapply(ggm_ag_g,FUN=cluster_spinglass)
+```
+\normalsize 
+
+### Community detection
+\footnotesize   
+Spinglass clustering  - ancestry group 1
+```{r spinglass ag1 - slide 24, message = TRUE, eval=TRUE}
+plot(ggm_ag_g[["ag1"]],
+	vertex.label=V(ggm_ag_g[["ag1"]])$label,
+	vertex.label.cex=.5,
+	mark.groups=ggm_ag_g_spg[["ag1"]],
+	vertex.size=ifelse(V(ggm_ag_g[["ag1"]])$label %in% 
+	     sig_m_ag[["ag1"]],20,10))
+```
+
+### Community detection
+\footnotesize   
+Spinglass clustering  - ancestry group 2
+```{r spinglass ag2 - slide 25, message = TRUE, eval=TRUE}
+plot(ggm_ag_g[["ag2"]],
+	vertex.label=V(ggm_ag_g[["ag2"]])$label,
+	vertex.label.cex=.5,
+	mark.groups=ggm_ag_g_spg[["ag2"]],
+	vertex.size=ifelse(V(ggm_ag_g[["ag2"]])$label %in% 
+		sig_m_ag[["ag2"]],20,10))
+```
+\normalsize 
+
+### Example from HAPO Metabolomics
+- Investigation of associations between maternal metabolites at 28 weeks gestation with newborn phenotypes at birth
+- Examined associations within and across four ancestry groups -- Afro-Caribbean, European, Mexican-American, Thai
+- Used a similar approach to that described here
+- For graphical lasso, used residuals from a linear model for each metabolite with predictors for covariates of interest 
+\vspace{2ex}
+- Kadakia et al. (2019) \textit{Diabetologia} Maternal metabolites during pregnancy are associated with newborn outcomes and hyperinsulimaemia across ancestries.
+
+
+### Example from HAPO Metabolomics
+Maternal fasting metabolites associated with newborn sum of skinfolds under 2 covariate adjustment models
+\begin{figure}
+\begin{center}
+\centerline{\includegraphics[width=10cm]{figures/mom_fast_metab_ssf.png}}
+\end{center}
+\caption{Kadakia et al. (2019)}
+\end{figure}
+
+
+
+
+
+# 2) Differential network analysis
+
+### Differential network analysis
+- Visual inspection suggests there are differences in the ancestry-specific networks we just generated
+- But are the differences 'statistically significant'?
+- One approach to differential network analysis:
+\begin{itemize}
+\item \textit{iDINGO} R package
+\item Ha et al. \textit{Bioinformatics} (2015) DINGO: differential network analysis in genomics. 
+\item Class et al. \textit{Bioinformatics} (2018) iDINGO - integrative differential network analysis in genomics with \textit{Shiny} application. 
+\end{itemize}
+
+### Differential network analysis
+- DINGO estimates a 'global' component of the network, $\mathcal{G}$, that represents edges that are common across groups
+- DINGO also estimates 'local' group-specific components, $\mathcal{L}(x)$, that represent unique relationships in each group depending on the value of a categorical variable $x$.
+- For two groups, group-specific edges are identified using a \textit{Differential Score:}
+$$\delta_{ab}^{(12)} = \frac{\hat{\phi}_{ab}^{(1)}-\hat{\phi}_{ab}^{(2)}}{s_{ab}^B}$$
+where $\hat{\phi}_{ab}^{(1)}$ and $\hat{\phi}_{ab}^{(2)}$ are Fisher's Z transformation of the estimates of group-specific partial correlations between metabolites $a$ and $b$ in groups 1 and 2, and $s_{ab}^B$ is the bootstrap estimate of the standard error.
+
+### Differential network analysis
+\footnotesize   
+Let's work with the first two ancestry groups.
+```{r two ag - slide 31, message = TRUE, eval=TRUE}
+hapo_2ag <- subset(hapo_i,anc_gp %in% c("ag1","ag2")) 
+hapo_2ag <- droplevels(hapo_2ag)
+hapo_2ag_mt <- hapo_2ag[,grep("mt",colnames(hapo_2ag),value=TRUE)]
+dim(hapo_2ag)
+dim(hapo_2ag_mt)
+```
+\normalsize 
+
+### Differential network analysis
+\footnotesize   
+The commented code below would perform the DINGO algorithm. The bootstrapping takes a long time. So we will just load an R object of the results that should be in your working directory.
+```{r bootstrap - slide 32, message = TRUE, eval=TRUE}
+ library(tictoc)
+tic()
+hapo_2ag_dn <- dingo(hapo_2ag_mt,x=hapo_2ag$anc_gp,B=50)
+toc()
+load("hapo_2ag_dn_B50.rda")
+
+```
+\normalsize 
+
+### Differential network analysis
+\footnotesize   
+Let's look at the various components of the output.
+```{r examine dingo - slide 33, message = TRUE, eval=TRUE}
+names(hapo_2ag_dn)
+head(hapo_2ag_dn$genepair)
+dim(hapo_2ag_dn$genepair)
+```
+\normalsize 
+
+### Differential network analysis
+\footnotesize   
+More components of the output.
+```{r examine dingo - slide 34, message = TRUE, eval=TRUE}
+hapo_2ag_dn$levels.x
+length(hapo_2ag_dn$R1)
+length(hapo_2ag_dn$R2)
+dim(hapo_2ag_dn$boot.diff)
+```
+\normalsize 
+
+### Differential network analysis
+\footnotesize   
+More components of the output.
+```{r examine dingo - slide 35, message = TRUE, eval=TRUE}
+length(hapo_2ag_dn$diff.score)
+length(hapo_2ag_dn$p.val)
+```
+\normalsize 
+
+### Differential network analysis
+\footnotesize   
+Create a data frame of some of the output
+```{r dingo df - slide 36, message = TRUE, eval=TRUE}
+hapo_2ag_dn_df <- data.frame(gene1=hapo_2ag_dn$genepair$gene1,
+		gene2=hapo_2ag_dn$genepair$gene2,
+		genepair=paste(as.character(hapo_2ag_dn$genepair$gene1),
+				as.character(hapo_2ag_dn$genepair$gene2),sep=":"),
+		R1=hapo_2ag_dn$R1,
+		R2=hapo_2ag_dn$R2,
+		diff.score=hapo_2ag_dn$diff.score,
+		p.val=hapo_2ag_dn$p.val)
+```
+\normalsize 
+
+### Differential network analysis
+Create a data frame of some of the output.
+\tiny
+```{r dingo df - slide 37, message = TRUE, eval=TRUE}
+head(hapo_2ag_dn_df)
+```
+\normalsize 
+
+
+### Differential network analysis
+Identify extremely different scores with diff.score>5 or <-5.
+\tiny  
+```{r high diff.score - slide 38, message = TRUE, eval=TRUE}
+hapo_2ag_dn_df$high_ds <- ifelse(abs(hapo_2ag_dn_df$diff.score)>5,
+                                 as.character(hapo_2ag_dn_df$genepair),"")
+hapo_2ag_dn_df[which(!hapo_2ag_dn_df$high_ds==""),]
+```
+\normalsize 
+
+### Differential network analysis
+\footnotesize   
+Compare R1 and R2, colored by diff.score.
+```{r R1R2 - slide 39, message = TRUE, eval=TRUE, fig.width=6,fig.height=3}
+ggplot(hapo_2ag_dn_df,aes(x=R1,y=R2)) + 
+		geom_abline(intercept=0,slope=1) + 
+		geom_point(aes(color=abs(diff.score)),size=3) + 
+		geom_text(label=hapo_2ag_dn_df$high_ds,vjust=-1) +
+		scale_color_gradient(low="lightpink",high="purple")
+```
+\normalsize
+
+### Differential network analysis
+\footnotesize   
+Plot of diff.score by p.val, colored by diff.score.
+```{r p.val diff.score - slide 40, message = TRUE, eval=TRUE, fig.width=6,fig.height=3}
+ggplot(hapo_2ag_dn_df,aes(x=diff.score,y=p.val)) + 
+		geom_point(aes(color=abs(diff.score)),size=3) + 
+		scale_color_gradient(low="lightpink",high="purple")
+```
+\normalsize
+
+### Differential network analysis
+\footnotesize   
+Explore the global component of the dingo graph. 
+```{r global - slide 41, message = TRUE, eval=TRUE}
+dingo_rho_thresh <- .20
+hapo_2ag_dn_df$global <- ifelse(
+          (abs(hapo_2ag_dn_df$R1)>dingo_rho_thresh) &
+					(abs(hapo_2ag_dn_df$R2)>dingo_rho_thresh) &
+					(sign(hapo_2ag_dn_df$R1>dingo_rho_thresh)==
+					sign(hapo_2ag_dn_df$R2>dingo_rho_thresh)),1,0)
+global_g <- graph_from_edgelist(
+  as.matrix(hapo_2ag_dn_df[which(hapo_2ag_dn_df$global==1),
+  c("gene1","gene2")]),directed=FALSE)
+```
+\normalsize
+
+### Differential network analysis
+\footnotesize   
+Explore the global component of the dingo graph.
+```{r global - slide 42, message = TRUE, eval=TRUE}
+V(global_g)$color <- rep("light blue",length(V(global_g)))
+V(global_g)$color[which(names(V(global_g)) %in% 
+        c("mt2_2","mt2_4","mt2_14","mt3_11"))] <-"light green"
+V(global_g)$size <- 15
+V(global_g)$label.cex <- .75
+plot(global_g,layout=layout_nicely(global_g))
+```
+\normalsize
+
+### Differential network analysis
+\footnotesize   
+Explore the local components of the dingo graphs.
+```{r local - slide 43, message = TRUE, eval=TRUE}
+hapo_2ag_dn_df$local_ag1 <- ifelse(
+          (abs(hapo_2ag_dn_df$R1)>dingo_rho_thresh) &
+					(abs(hapo_2ag_dn_df$R2)<dingo_rho_thresh) &
+					(hapo_2ag_dn_df$p.val<.05),1,0)
+
+hapo_2ag_dn_df$local_ag2 <- ifelse(
+          (abs(hapo_2ag_dn_df$R2)>dingo_rho_thresh) &
+					(abs(hapo_2ag_dn_df$R1)<dingo_rho_thresh) &
+					(hapo_2ag_dn_df$p.val<.05),1,0)
+
+table(hapo_2ag_dn_df$local_ag1,hapo_2ag_dn_df$local_ag2)
+```
+\normalsize
+
+### Differential network analysis
+\footnotesize   
+Explore the local components of the dingo graphs. 
+```{r locals - slide 44, message = TRUE, eval=TRUE}
+local_g_ag1 <- graph_from_edgelist(
+  as.matrix(hapo_2ag_dn_df[which((hapo_2ag_dn_df$global+
+                                    hapo_2ag_dn_df$local_ag1)==1),
+                           c("gene1","gene2")]),directed=FALSE)
+local_g_ag2 <- graph_from_edgelist(
+  as.matrix(hapo_2ag_dn_df[which((hapo_2ag_dn_df$global+
+                                    hapo_2ag_dn_df$local_ag2)==1),
+                           c("gene1","gene2")]),directed=FALSE)
+```
+\normalsize
+
+### Differential network analysis
+Explore the local components of the dingo graphs. 
+\tiny  
+```{r locals - slide 45, message = TRUE, eval=TRUE}
+local_ag1_nodes <- unique(c(as.character(hapo_2ag_dn_df[which(hapo_2ag_dn_df$local_ag1==1),"gene1"]),
+                            as.character(hapo_2ag_dn_df[which(hapo_2ag_dn_df$local_ag1==1),"gene2"])))
+local_ag2_nodes <- unique(c(as.character(hapo_2ag_dn_df[which(hapo_2ag_dn_df$local_ag2==1),"gene1"]),
+                            as.character(hapo_2ag_dn_df[which(hapo_2ag_dn_df$local_ag2==1),"gene2"])))
+
+V(local_g_ag1)$color <- rep("light blue",length(V(local_g_ag1)))
+V(local_g_ag1)$color[which(names(V(local_g_ag1)) %in% local_ag1_nodes)] <- "light pink"
+
+V(local_g_ag2)$color <- rep("light blue",length(V(local_g_ag2)))
+V(local_g_ag2)$color[which(names(V(local_g_ag2)) %in% local_ag2_nodes)] <- "light green"
+```
+\normalsize
+
+### Differential network analysis
+\footnotesize   
+Local component for ancestry group 1 
+```{r local ag1 - slide 46, message = TRUE, eval=TRUE, fig.width=4,fig.height=4}
+plot(local_g_ag1,vertex.label.cex=.5)
+```
+\normalsize
+
+### Differential network analysis
+\footnotesize   
+Local component for ancestry group 2
+```{r local ag2 - slide 47, message = TRUE, eval=TRUE, fig.width=4,fig.height=4}
+plot(local_g_ag2,vertex.label.cex=.5)
+```
+\normalsize
+
+### Summary
+- Networks are very helpful for 'story telling' in metabolomics (and other omics) settings
+- Graphical lasso and related methods focus on conditional dependence
+- Gives some assurance that edges aren't simply an artifact of sharing common correlations between a pair of nodes with a third node
+- Focusing on subnetworks related to phenotype can place per-metabolite associations into context
+- Differential network analyses based on graphical models can point to meaningful differences between groups
+- Graphics take a while...be patient and use Google!
+
+### Acknowledgements
+- \textbf{Thanks to...}
+- \textbf{Kate Shutta}, \textbf{Octavious Talbot}, \textbf{Alan Kuang} and \textbf{Nathan Gill} for workshop assistance
+- \textbf{HAPO Metabolomics} investigators (\textbf{PI: William Lowe Jr. MD}) for example data

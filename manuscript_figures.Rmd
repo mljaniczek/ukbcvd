@@ -1,0 +1,399 @@
+---
+title: "manuscript_figures"
+author: "Margaret Janiczek"
+date: "2024-09-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+
+```{r}
+load("results_mod3_bothphases_jan2024.Rdata")
+validated_mets <- read.csv("validated_unique_mets_m3_details_jan2024.csv")
+# load metabolite group info 
+
+
+#
+load("processed_met_key.Rdata")
+
+library(stringr)
+library(janitor)
+library(gtsummary)
+
+met_key <- ukb_key_metab %>%
+  filter(!str_detect(col.name, "qc_flag"))%>%
+  filter(field.showcase %in% 23400:24000) %>%
+  filter(col.type == "Continuous") %>%
+  filter(str_detect(field.tab, ".0.0")) %>%
+  mutate(pathway = ifelse(
+    Group == "Lipoprotein subclasses", Subgroup,Group
+  )) %>%
+  mutate(
+    ratio_title = ifelse(
+      is.na(title), str_split_i(col.name, "_percentage", 1), NA
+    ),
+    ratio_title = str_split_i(ratio_title, "_ratio", 1),
+    ratio_title2 = str_replace_all(ratio_title, "_", " ")
+  )
+
+met_key$pathway[is.na(met_key$pathway)] <- "Ratios"
+
+tbl_summary(met_key %>% select(pathway))
+
+tbl_summary(met_key %>% select(Group), sort = all_categorical(FALSE) ~ "frequency")
+
+
+tbl_summary(met_key %>% filter(Group == "Lipoprotein subclasses") %>% select(pathway), sort = all_categorical(FALSE) ~ "frequency")
+
+
+met_key2 <- met_key %>%
+  dplyr::select(field.tab, col.name, title, units, Group, Subgroup, pathway)
+
+write.csv(met_key2, file = "metabolite_info.csv")
+```
+
+Summarize number of unique metabolites that were validated in each age strata.
+
+```{r}
+# make variable for <0.01 FDR
+
+sigfdr <- all_strat_both_phases_long_m3 %>%
+  mutate(ltfdr = fdr < 0.01) %>%
+  dplyr::select(metabolite, age_cat, phase, ltfdr) %>%
+  pivot_wider(names_from = phase, values_from = ltfdr) %>% 
+  janitor::clean_names() %>%
+  mutate(validated_ltfdr = phase_i + phase_ii) %>%
+  filter(validated_ltfdr == 2) %>%
+  group_by(age_cat) %>%
+  count(age_cat)
+
+summary_unique_mets1 <- all_strat_both_phases_long_m3 %>% filter(sig_category_m3 == "Validated")
+
+length(unique(summary_unique_mets1$metabolite))
+
+summary_unique_mets <- all_strat_both_phases_long_m3 %>% filter(sig_category_m3 == "Validated") %>%
+  dplyr::select(metabolite, age_cat) %>%
+  group_by(age_cat) %>%
+  count(age_cat)
+```
+
+
+
+```{r}
+
+met_fdr_p1 <- all_strat_both_phases_long_m3 %>%
+  filter(phase == "Phase I", fdr<0.01, age_cat == "70-85")
+
+length(unique(met_fdr_p1$metabolite))
+
+
+met_fdr_validated<- all_strat_both_phases_long_m3 %>%
+  filter(phase == "Phase II") %>%
+  filter(metabolite %in% met_fdr_p1$metabolite)
+
+
+met_val_summary <- met_fdr_p1 %in%
+
+length(unique(met_fdr_summary$metabolite))
+
+# get mets that meet threshold 
+
+met_thresh <- all_strat_both_phases_long_m3 %>%
+  filter(sig_category_m3 == "Validated")
+
+res <- all_strat_both_phases_long_m3 %>%
+  filter(phase == "Phase I") %>%
+  filter(metabolite %in% met_thresh$metabolite)%>%
+  left_join(met_key %>% dplyr::select(metabolite = col.name, met_name = title, pathway))
+
+res1 <- all_strat_both_phases_long_m3 %>% 
+  filter(phase == "Phase I") %>%
+  filter(metabolite %in% met_thresh$metabolite) %>%
+  left_join(met_key %>% dplyr::select(metabolite = col.name, met_name = title, pathway)) %>%
+   filter(!is.na(met_name)) %>%
+  filter(age_cat == "<50") %>%
+  arrange(estimate)
+
+res2 <- all_strat_both_phases_long_m3 %>% 
+  filter(phase == "Phase I") %>%
+  filter(metabolite %in% met_thresh$metabolite) %>%
+  left_join(met_key %>% dplyr::select(metabolite = col.name, met_name = title, pathway)) %>%
+   filter(!is.na(met_name)) %>%
+  filter(age_cat == "50-59") %>%
+  arrange(estimate)
+
+res4 <- all_strat_both_phases_long_m3 %>% 
+  filter(phase == "Phase I") %>%
+  filter(metabolite %in% met_thresh$metabolite) %>%
+  left_join(met_key %>% dplyr::select(metabolite = col.name, met_name = title, pathway)) %>%
+   filter(!is.na(met_name)) %>% # this gets rid of the ratio ones
+  filter(age_cat == "60+") %>%
+  arrange(estimate)
+```
+
+
+```{r}
+# heatmap of sex coefficient estimates
+
+res_dat <- res %>%
+  select(metabolite, age_cat, estimate, pathway, met_name) %>%
+  mutate(age_cat = fct_relevel(as.factor(age_cat), "<50")) %>%
+  arrange(age_cat) %>%
+  filter(met_name != "Other") %>%
+  pivot_wider(names_from = age_cat, values_from = estimate) %>%
+  mutate(pathway = as.factor(str_split_i(pathway, '\\(', 1))) %>%
+  mutate(pathway = fct_relevel(pathway, "Fluid balance", "Large VLDL ", "Very large VLDL ","Lipoprotein particle sizes", "Medium HDL ", "Large HDL ", "Very large HDL "))%>%
+  arrange(pathway)
+
+res_mat <- as.matrix(res_dat %>% select(-c(metabolite:met_name)))
+rownames(res_mat) <- res_dat$met_name
+
+annotation_row = data.frame(
+  "metabolite.class" = res_dat$pathway
+)
+rownames(annotation_row) = res_dat$met_name
+
+library(pheatmap)
+pheatmap(res_mat, 
+         cluster_rows = FALSE, cluster_cols = FALSE, annotation_row = annotation_row)
+
+```
+
+
+# Figure 1
+
+Flow chart - done in powerpoint. 
+
+
+# Figure 3
+
+Outcomes
+
+```{r}
+load("phase1_outcome_results_cad.Rdata")
+load("validated_outcome_results_41mets.Rdata")
+
+sig_valid <- sig_valid %>%
+  mutate(abs_dif = abs(sig_dif)) %>%
+  arrange(desc(abs_dif))
+
+
+all_strat_f <- all_strat_f %>%
+  mutate(metabolite2 = str_split_i(metabolite, "_f2", 1))
+
+all_strat_f %>%
+  filter(metabolite %in% head(sig_valid$metabolite)) %>%
+  ggplot(aes(y = metabolite2, color = sex)) + 
+  theme_classic() +
+  scale_x_continuous(breaks = seq(0,2, .5), limits = c(0,2)) +
+  coord_fixed(ratio=.3) +
+  xlab("Odds Ratio") +
+  geom_point(aes(x=estimate), shape=15, size=3) +
+  geom_linerange(aes(xmin=conf.low, xmax=conf.high))+ 
+  geom_vline(xintercept = 1, col = "black", linetype = 2) +
+  facet_grid(~age_cat)
+```
+
+
+# Table 1
+
+Demographics table - have to do on the server since includes pt demographic data. 
+
+
+
+
+# Figure 3
+
+```{r volcano}
+
+top_proteins_df <- res.coxph.all %>%
+  group_by(model) %>%
+  do(bind_rows(
+      label_top_proteins(., 5, "high"), # extract top 5 proteins
+      label_top_proteins(., 5, "low")
+    )
+  ) %>% ungroup()
+
+label_top_proteins <- function(data, k, direction) {
+  if (direction == "high") {
+    top_proteins <- data %>%
+      filter(risk == "HR>1, q<0.01") %>% arrange(q_value, desc(hr)) %>% head(k)
+  } else {
+    top_proteins <- data %>%
+      filter(risk == "HR<1, q<0.01") %>% arrange(q_value, desc(abs(hr))) %>% head(k)
+  }
+  return(top_proteins)
+}
+# specify colors for volcano plot
+mycolors <- c("dodgerblue3", "gray50", "firebrick3")
+names(mycolors) <- c("HR<1, q<0.01", "q>0.01","HR>1, q<0.01")
+
+# make volcano plot
+## `res.coxph.all` is a data frame of results from the preliminary univariate analysis of proteomics
+### `risk` is categorical variable with levels c("HR<1, q<0.01", "q>0.01","HR>1, q<0.01")
+volc.plot <- res.coxph.all %>%
+  filter(model != "M3b") %>%
+  ggplot(., aes(x = hr, y = neglog10pval)) +
+  geom_point(aes(color = risk), size=1) +
+  facet_wrap(model ~ ., nrow = 1) +
+  scale_color_manual(values = mycolors) +
+  guides(colour = guide_legend(override.aes = list(size = 1.5))) +
+  ggrepel::geom_label_repel(data = subset(top_proteins_df, model == "M1"),
+            mapping = aes(label = protein_name), size = 2.5) +
+  ggrepel::geom_label_repel(data = subset(top_proteins_df, model == "M2"),
+            mapping = aes(label = protein_name), size = 2.5) +
+  ggrepel::geom_label_repel(data = subset(top_proteins_df, model == "M3"),
+            mapping = aes(label = protein_name), size = 2.5) +
+  labs(x = "Hazard Ratio", y = expression("-log"[10]*"(p-value)"),
+       title = "Volcano Plot for Ischemic Stroke") +
+  guides(color = guide_legend("Risk")) +
+  theme_bw()
+
+
+```
+
+
+# Supplemental 
+
+## S Table 1
+
+Demographic table for phase II
+
+## S Table 2
+
+Full table of results
+
+
+
+# Figure 2 :OLD 
+
+Model Results - forest plot of M3 validated coefficients w CIs
+
+```{r}
+library(tidyverse)
+library(gt)
+
+
+p <- 
+  res |>
+  arrange(estimate) |>
+  ggplot(aes(y = fct_rev(met_name))) + 
+  theme_classic() +
+  geom_point(aes(x=estimate), shape=15, size=3) +
+  geom_linerange(aes(xmin=conf.low, xmax=conf.high)) +
+  annotate("text", x = -.32, y = 45, label = "Higher in Women") +
+  annotate("text", x = .3, y = 45, label = "Higher in Men") +
+  facet_grid(~age_cat)
+p
+
+```
+
+
+```{r}
+
+p_mid <- p + 
+  theme(axis.line.y = element_blank(),
+        axis.ticks.y= element_blank(),
+        axis.text.y= element_blank(),
+        axis.title.y= element_blank())
+p_mid
+
+
+# wrangle results into pre-plotting table form
+res_plot <- res4 |>
+  # round estimates and 95% CIs to 2 decimal places for journal specifications
+  mutate(across(
+    c(estimate, conf.low, conf.high),
+    ~ str_pad(
+      round(.x, 2),
+      width = 4,
+      pad = "0",
+      side = "right"
+    )
+  ),
+  # add an "-" between HR estimate confidence intervals
+  estimate_lab = paste0(estimate, " (", conf.low, "-", conf.high, ")")) |>
+  # round p-values to two decimal places, except in cases where p < .001
+  mutate(q.value = case_when(
+    fdr < .001 ~ "<0.001",
+    round(fdr, 2) == .05 ~ as.character(round(fdr,3)),
+    fdr < .01 ~ str_pad( # if less than .01, go one more decimal place
+      as.character(round(fdr, 3)),
+      width = 4,
+      pad = "0",
+      side = "right"
+    ),
+    TRUE ~ str_pad( # otherwise just round to 2 decimal places and pad string so that .2 reads as 0.20
+      as.character(round(fdr, 2)),
+      width = 4,
+      pad = "0",
+      side = "right"
+    )
+  )) |>
+  # add a row of data that are actually column names which will be shown on the plot in the next step
+  bind_rows(
+    data.frame(
+      met_name = "Metabolite Name",
+      estimate_lab = "Coefficient (95% CI)",
+      conf.low = "",
+      conf.high = "",
+      q.value = "q-value"
+    )
+  ) |>
+  mutate(met_name = fct_rev(fct_relevel(met_name, "Metabolite Name")))
+
+glimpse(res_plot)
+
+p_left <-
+  res_plot  |>
+  ggplot(aes(y = met_name))
+p_left
+
+p_left <- 
+  p_left +
+  geom_text(aes(x = 0, label = met_name), hjust = 0, fontface = "bold")
+p_left
+
+p_left <- 
+  p_left +
+  geom_text(
+    aes(x = 2, label = estimate_lab),
+    hjust = 0,
+    fontface = ifelse(res_plot$estimate_lab == "Estimate (95% CI)", "bold", "plain")
+  )
+
+p_left
+
+p_left <-
+  p_left +
+  theme_void() +
+  coord_cartesian(xlim = c(0, 4))
+
+p_left
+
+p_right <-
+  res_plot  |>
+  ggplot() +
+  geom_text(
+    aes(x = 0, y = met_name, label = q.value),
+    hjust = 0,
+    fontface = ifelse(res_plot$q.value == "q-value", "bold", "plain")
+  ) +
+  theme_void() 
+
+p_right
+
+library(patchwork)
+# put it together with patchwork
+layout <- c(
+  area(t = 0, l = 0, b = 30, r = 15), # left plot, starts at the top of the page (0) and goes 30 units down and 3 units to the right
+  area(t = 1, l = 14, b = 30, r = 20), # middle plot starts a little lower (t=1) because there's no title. starts 1 unit right of the left plot (l=4, whereas left plot is r=3), goes to the bottom of the page (30 units), and 6 units further over from the left plot (r=9 whereas left plot is r=3)
+  area(t = 0, l = 20, b = 30, r = 21) # right most plot starts at top of page, begins where middle plot ends (l=9, and middle plot is r=9), goes to bottom of page (b=30), and extends two units wide (r=11)
+)
+# final plot arrangement
+p_left + p_mid + plot_layout(design = layout)
+```
